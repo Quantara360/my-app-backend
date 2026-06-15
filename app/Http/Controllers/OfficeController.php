@@ -610,8 +610,13 @@ class OfficeController extends Controller
     // Face Recognition & Attendance
     // -----------------------------------------------------------------------
 
-    /** URL of the Python face_service.py micro-service */
-    private string $faceServiceUrl = 'http://127.0.0.1:5050';
+    /** URL of the Python face_service.py micro-service (set FACE_SERVICE_URL in .env) */
+    private string $faceServiceUrl;
+
+    public function __construct()
+    {
+        $this->faceServiceUrl = env('FACE_SERVICE_URL', 'http://127.0.0.1:5050');
+    }
 
     /**
      * Upload a worker photo and register the face with the Python service.
