@@ -9,5 +9,5 @@ class PersonalFile extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'type', 'uploaded_at'];
+    protected $fillable = ['name', 'type', 'file_path', 'uploaded_at'];
 }
