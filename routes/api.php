@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('worksites', [OfficeController::class, 'createWorksite']);
     Route::put('worksites/{worksite}', [OfficeController::class, 'updateWorksite']);
     Route::delete('worksites/{worksite}', [OfficeController::class, 'deleteWorksite']);
+    Route::post('worksites/{worksite}/reports', [OfficeController::class, 'saveWorksiteReport']);
     Route::get('workers', [OfficeController::class, 'workers']);
     Route::post('workers', [OfficeController::class, 'createWorker']);
     Route::put('workers/{worker}', [OfficeController::class, 'updateWorker']);

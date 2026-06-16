@@ -9,6 +9,7 @@ use App\Models\Chemical;
 use App\Models\Machinery;
 use App\Models\PeticashTransaction;
 use App\Models\Worksite;
+use App\Models\WorksiteReport;
 use App\Models\Worker;
 use App\Models\WorkerSalary;
 use App\Models\OfficeStaffSalary;
@@ -783,5 +784,42 @@ class OfficeController extends Controller
     {
         $attendance->delete();
         return Response::json(['success' => true]);
+    }
+
+    /**
+     * Save worksite report (workers count, date, up to 3 images)
+     * POST /worksites/{worksite}/reports
+     */
+    public function saveWorksiteReport(Request $request, Worksite $worksite)
+    {
+        $data = $request->validate([
+            'workers_count' => 'nullable|integer',
+            'report_date'   => 'nullable|date',
+            'image_1'       => 'nullable|image|max:10240', // max 10MB
+            'image_2'       => 'nullable|image|max:10240',
+            'image_3'       => 'nullable|image|max:10240',
+        ]);
+
+        $report = new WorksiteReport();
+        $report->worksite_id = $worksite->id;
+        $report->workers_count = $data['workers_count'] ?? null;
+        $report->report_date = $data['report_date'] ?? null;
+
+        if ($request->hasFile('image_1')) {
+            $path = $request->file('image_1')->store('reports', 'public');
+            $report->image_1 = Storage::url($path);
+        }
+        if ($request->hasFile('image_2')) {
+            $path = $request->file('image_2')->store('reports', 'public');
+            $report->image_2 = Storage::url($path);
+        }
+        if ($request->hasFile('image_3')) {
+            $path = $request->file('image_3')->store('reports', 'public');
+            $report->image_3 = Storage::url($path);
+        }
+
+        $report->save();
+
+        return Response::json(['success' => true, 'report' => $report], 201);
     }
 }
