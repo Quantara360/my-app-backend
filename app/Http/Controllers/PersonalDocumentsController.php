@@ -66,7 +66,7 @@ class PersonalDocumentsController extends Controller
     {
         $request->validate([
             'name'        => 'required|string',
-            'type'        => 'required|string|in:PDF,WORD,IMG,TXT',
+            'type'        => 'required|string|in:PDF,WORD,IMG',
             'uploaded_at' => 'nullable|string',
             'file'        => 'nullable|file|max:20480', // 20MB max
         ]);
@@ -94,7 +94,7 @@ class PersonalDocumentsController extends Controller
     {
         $request->validate([
             'name'        => 'required|string',
-            'type'        => 'required|string|in:PDF,WORD,IMG,TXT',
+            'type'        => 'required|string|in:PDF,WORD,IMG',
             'uploaded_at' => 'nullable|string',
             'file'        => 'nullable|file|max:20480',
         ]);
