@@ -1,0 +1,13 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class PersonalFile extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['name', 'type', 'uploaded_at'];
+}

@@ -89,4 +89,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('attendances', [OfficeController::class, 'attendances']);
     Route::post('attendances', [OfficeController::class, 'markAttendance']);
     Route::delete('attendances/{attendance}', [OfficeController::class, 'deleteAttendance']);
+
+    // Personal Documents (Notes and Files)
+    Route::get('personal-notes', [\App\Http\Controllers\PersonalDocumentsController::class, 'getNotes']);
+    Route::post('personal-notes', [\App\Http\Controllers\PersonalDocumentsController::class, 'storeNote']);
+    Route::put('personal-notes/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'updateNote']);
+    Route::delete('personal-notes/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'deleteNote']);
+
+    Route::get('personal-files', [\App\Http\Controllers\PersonalDocumentsController::class, 'getFiles']);
+    Route::post('personal-files', [\App\Http\Controllers\PersonalDocumentsController::class, 'storeFile']);
+    Route::put('personal-files/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'updateFile']);
+    Route::delete('personal-files/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'deleteFile']);
 });
