@@ -21,10 +21,26 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('worksites/{worksite}', [OfficeController::class, 'updateWorksite']);
     Route::delete('worksites/{worksite}', [OfficeController::class, 'deleteWorksite']);
     Route::post('worksites/{worksite}/reports', [OfficeController::class, 'saveWorksiteReport']);
+
+    Route::get('hospitals', [OfficeController::class, 'hospitals']);
+    Route::post('hospitals', [OfficeController::class, 'createHospital']);
+    Route::put('hospitals/{hospital}', [OfficeController::class, 'updateHospital']);
+    Route::delete('hospitals/{hospital}', [OfficeController::class, 'deleteHospital']);
+
+    Route::get('sub-sites', [OfficeController::class, 'subSites']);
+    Route::post('sub-sites', [OfficeController::class, 'createSubSite']);
+    Route::put('sub-sites/{subSite}', [OfficeController::class, 'updateSubSite']);
+    Route::delete('sub-sites/{subSite}', [OfficeController::class, 'deleteSubSite']);
+
+    Route::get('sub-site-images', [OfficeController::class, 'getBookImages']);
+    Route::post('sub-site-images/upload', [OfficeController::class, 'uploadBookImage']);
+    Route::delete('sub-site-images/{image}', [OfficeController::class, 'deleteBookImage']);
+
     Route::get('workers', [OfficeController::class, 'workers']);
     Route::post('workers', [OfficeController::class, 'createWorker']);
     Route::put('workers/{worker}', [OfficeController::class, 'updateWorker']);
     Route::delete('workers/{worker}', [OfficeController::class, 'deleteWorker']);
+    Route::get('workers/{worker}/epf-history', [OfficeController::class, 'workerEpfHistory']);
     Route::get('assets', [OfficeController::class, 'assets']);
     Route::post('assets', [OfficeController::class, 'createAsset']);
     Route::put('assets/{asset}', [OfficeController::class, 'updateAsset']);

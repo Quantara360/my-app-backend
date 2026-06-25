@@ -5,18 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Worksite extends Model
+class SubSite extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'name',
         'description',
-        'supervisor_id',
+        'hospital_id',
     ];
 
-    public function hospitals()
+    public function hospital()
     {
-        return $this->hasMany(Hospital::class, 'worksite_id');
+        return $this->belongsTo(Hospital::class, 'hospital_id');
     }
 }

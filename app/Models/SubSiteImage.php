@@ -5,18 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Worksite extends Model
+class SubSiteImage extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'name',
-        'description',
-        'supervisor_id',
+        'sub_site_id',
+        'book_id',
+        'image_path',
     ];
 
-    public function hospitals()
+    public function subSite()
     {
-        return $this->hasMany(Hospital::class, 'worksite_id');
+        return $this->belongsTo(SubSite::class);
     }
 }

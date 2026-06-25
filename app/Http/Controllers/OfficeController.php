@@ -8,6 +8,9 @@ use App\Models\Attendance;
 use App\Models\Chemical;
 use App\Models\Machinery;
 use App\Models\PeticashTransaction;
+use App\Models\Hospital;
+use App\Models\SubSite;
+use App\Models\SubSiteImage;
 use App\Models\Worksite;
 use App\Models\WorksiteReport;
 use App\Models\Worker;
@@ -24,9 +27,28 @@ use Illuminate\Support\Facades\Storage;
 
 class OfficeController extends Controller
 {
-    public function worksites()
+    public function worksites(Request $request)
     {
-        return Response::json(Worksite::all());
+        $query = Worksite::query();
+        
+        if ($request->has('parent_id')) {
+            // allows finding children of a specific worksite. Use parent_id=null for root sites
+            $parentId = $request->query('parent_id');
+            if (strtolower($parentId) === 'null' || $parentId === '') {
+                $query->whereNull('parent_id');
+            } else {
+                $query->where('parent_id', $parentId);
+            }
+        }
+        
+        if ($request->has('type')) {
+            $query->where('type', $request->query('type'));
+        }
+
+        return Response::json($query->get()->map(function ($site) {
+            $site->parent_id = $site->parent_id !== null && $site->parent_id !== '' ? (int) $site->parent_id : null;
+            return $site;
+        }));
     }
 
     public function worksite(Worksite $worksite)
@@ -37,8 +59,8 @@ class OfficeController extends Controller
     public function createWorksite(Request $request)
     {
         $payload = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
+            'name'          => 'required|string|max:255',
+            'description'   => 'nullable|string',
             'supervisor_id' => 'nullable|exists:users,id',
         ]);
 
@@ -50,8 +72,8 @@ class OfficeController extends Controller
     public function updateWorksite(Request $request, Worksite $worksite)
     {
         $payload = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
+            'name'          => 'required|string|max:255',
+            'description'   => 'nullable|string',
             'supervisor_id' => 'nullable|exists:users,id',
         ]);
 
@@ -66,9 +88,153 @@ class OfficeController extends Controller
         return Response::json(['message' => 'Deleted successfully']);
     }
 
+    // ─── Hospitals ────────────────────────────────────────────────────────────
+
+    public function hospitals(Request $request)
+    {
+        $query = Hospital::query();
+        if ($request->has('worksite_id')) {
+            $query->where('worksite_id', $request->query('worksite_id'));
+        }
+        return Response::json($query->get());
+    }
+
+    public function createHospital(Request $request)
+    {
+        $payload = $request->validate([
+            'name'        => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'worksite_id' => 'required|exists:worksites,id',
+        ]);
+
+        $hospital = Hospital::create($payload);
+        return Response::json($hospital, 201);
+    }
+
+    public function updateHospital(Request $request, Hospital $hospital)
+    {
+        $payload = $request->validate([
+            'name'        => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'worksite_id' => 'sometimes|exists:worksites,id',
+        ]);
+
+        $hospital->update($payload);
+        return Response::json($hospital->refresh());
+    }
+
+    public function deleteHospital(Hospital $hospital)
+    {
+        $hospital->delete();
+        return Response::json(['message' => 'Deleted successfully']);
+    }
+
+    // ─── Sub Sites ────────────────────────────────────────────────────────────
+
+    public function subSites(Request $request)
+    {
+        $query = SubSite::query();
+        if ($request->has('hospital_id')) {
+            $query->where('hospital_id', $request->query('hospital_id'));
+        }
+        return Response::json($query->get());
+    }
+
+    public function createSubSite(Request $request)
+    {
+        $payload = $request->validate([
+            'name'        => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'hospital_id' => 'required|exists:hospitals,id',
+        ]);
+
+        $subSite = SubSite::create($payload);
+        return Response::json($subSite, 201);
+    }
+
+    public function updateSubSite(Request $request, SubSite $subSite)
+    {
+        $payload = $request->validate([
+            'name'        => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'hospital_id' => 'sometimes|exists:hospitals,id',
+        ]);
+
+        $subSite->update($payload);
+        return Response::json($subSite->refresh());
+    }
+
+    public function deleteSubSite(SubSite $subSite)
+    {
+        $subSite->delete();
+        return Response::json(['message' => 'Deleted successfully']);
+    }
+
+    // ─── Sub Site Images ───────────────────────────────────────────────────────
+
+    public function getBookImages(Request $request)
+    {
+        $request->validate([
+            'sub_site_id' => 'required|exists:sub_sites,id',
+        ]);
+
+        $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
+                             ->where('created_at', '>=', now()->subHours(24));
+
+        if ($request->has('book_id')) {
+            $query->where('book_id', $request->query('book_id'));
+        }
+
+        return Response::json($query->latest()->get());
+    }
+
+    public function uploadBookImage(Request $request)
+    {
+        $request->validate([
+            'sub_site_id' => 'required|exists:sub_sites,id',
+            'book_id' => 'required|integer',
+            'photo' => 'required|image|max:10240', // 10MB max
+        ]);
+
+        $subSiteId = $request->input('sub_site_id');
+        $bookId = $request->input('book_id');
+
+        $activeImagesCount = SubSiteImage::where('sub_site_id', $subSiteId)
+                                         ->where('book_id', $bookId)
+                                         ->where('created_at', '>=', now()->subHours(24))
+                                         ->count();
+
+        if ($activeImagesCount >= 10) {
+            return Response::json(['error' => 'Maximum limit of 10 images reached for this book within the last 24 hours.'], 422);
+        }
+
+        $path = $request->file('photo')->store("sub_site_images/{$subSiteId}/book_{$bookId}", 'public');
+
+        $image = SubSiteImage::create([
+            'sub_site_id' => $subSiteId,
+            'book_id' => $bookId,
+            'image_path' => $path,
+        ]);
+
+        return Response::json($image, 201);
+    }
+
+    public function deleteBookImage(SubSiteImage $image)
+    {
+        Storage::disk('public')->delete($image->image_path);
+        $image->delete();
+
+        return Response::json(['message' => 'Deleted successfully']);
+    }
+
     public function workers()
     {
-        return Response::json(Worker::with('worksite')->paginate(50));
+        return Response::json(Worker::with(['worksite', 'epfHistories'])->paginate(50));
+    }
+
+    public function workerEpfHistory(Worker $worker)
+    {
+        return Response::json($worker->epfHistories()->latest()->get());
     }
 
     public function createWorker(Request $request)
@@ -83,11 +249,17 @@ class OfficeController extends Controller
             'age' => 'nullable|integer|min:16',
             'join_date' => 'nullable|date',
             'face_recognition_enabled' => 'boolean',
+            'epf' => 'nullable|string|max:255',
+            'gender' => 'nullable|string|max:50',
         ]);
 
         $worker = Worker::create($payload);
 
-        return Response::json($worker->load('worksite'));
+        if (!empty($payload['epf'])) {
+            $worker->epfHistories()->create(['epf_number' => $payload['epf']]);
+        }
+
+        return Response::json($worker->load(['worksite', 'epfHistories']));
     }
 
     public function updateWorker(Request $request, Worker $worker)
@@ -102,11 +274,18 @@ class OfficeController extends Controller
             'age' => 'nullable|integer|min:16',
             'join_date' => 'nullable|date',
             'face_recognition_enabled' => 'boolean',
+            'epf' => 'nullable|string|max:255',
+            'gender' => 'nullable|string|max:50',
         ]);
 
+        $oldEpf = $worker->epf;
         $worker->update($payload);
 
-        return Response::json($worker->refresh()->load('worksite'));
+        if (!empty($payload['epf']) && $payload['epf'] !== $oldEpf) {
+            $worker->epfHistories()->create(['epf_number' => $payload['epf']]);
+        }
+
+        return Response::json($worker->refresh()->load(['worksite', 'epfHistories']));
     }
 
     public function deleteWorker(Worker $worker)
@@ -219,6 +398,9 @@ class OfficeController extends Controller
             'hazard_level' => 'required|string|max:50',
             'storage_location' => 'nullable|string|max:255',
             'worksite_id' => 'nullable|exists:worksites,id',
+            'tender_requirements' => 'nullable|string|max:255',
+            'monthly_purchases' => 'nullable|string|max:255',
+            'balance' => 'nullable|string|max:255',
         ]);
 
         $chemical = Chemical::create($payload);
@@ -234,6 +416,9 @@ class OfficeController extends Controller
             'hazard_level' => 'required|string|max:50',
             'storage_location' => 'nullable|string|max:255',
             'worksite_id' => 'nullable|exists:worksites,id',
+            'tender_requirements' => 'nullable|string|max:255',
+            'monthly_purchases' => 'nullable|string|max:255',
+            'balance' => 'nullable|string|max:255',
         ]);
 
         $chemical->update($payload);
@@ -711,66 +896,201 @@ class OfficeController extends Controller
      */
     public function markAttendance(Request $request)
     {
-        $payload = $request->validate([
-            'worker_id'   => 'required|exists:workers,id',
-            'worksite_id' => 'nullable|exists:worksites,id',
-            'shift'       => 'required|in:Morning,Evening',
-            'date'        => 'required|date',
-            'method'      => 'nullable|string|max:20',
-            'confidence'  => 'nullable|numeric',
-        ]);
-
-        $worker = Worker::find($payload['worker_id']);
-        if ($payload['worksite_id'] && $worker->assigned_worksite_id != $payload['worksite_id']) {
-            return Response::json([
-                'success' => false,
-                'error'   => 'Worker is not assigned to this worksite.'
-            ], 403);
+        // Normalize shift casing before validation
+        if ($request->has('shift')) {
+            $shift = ucfirst(strtolower($request->input('shift')));
+            $request->merge(['shift' => $shift]);
+        }
+        // Normalize state casing
+        if ($request->has('state')) {
+            $request->merge(['state' => strtoupper($request->input('state'))]);
         }
 
-        $payload['marked_at'] = now();
-        $payload['status']    = 'present';
-        $payload['method']    = $payload['method'] ?? 'face';
+        // Debug: log incoming data
+        \Log::info('[markAttendance] incoming', $request->all());
+
+        try {
+            $payload = $request->validate([
+                'worker_id'   => 'required|exists:workers,id',
+                'worksite_id' => 'nullable',           // accept anything — we override below
+                'sub_site_id' => 'nullable|exists:sub_sites,id',
+                'shift'       => 'required|in:Morning,Evening',
+                'date'        => 'required|date',
+                'method'      => 'nullable|string|max:20',
+                'confidence'  => 'nullable|numeric',
+                'state'       => 'nullable|in:IN,OUT',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('[markAttendance] validation failed', $e->errors());
+            return Response::json([
+                'success' => false,
+                'errors'  => $e->errors(),
+                'error'   => 'Validation failed: ' . implode(', ', array_map(fn($msgs) => implode(', ', $msgs), $e->errors())),
+            ], 422);
+        }
+
+        $state = $payload['state'] ?? 'IN';
+        $worker = Worker::find($payload['worker_id']);
+
+        // Always use the worker's real assigned worksite — don't trust the frontend param
+        $payload['worksite_id'] = $worker->assigned_worksite_id;
+
 
         $existing = Attendance::where([
             'worker_id' => $payload['worker_id'],
-            'date'      => $payload['date'],
             'shift'     => $payload['shift'],
-        ])->first();
+        ])->whereDate('date', $payload['date'])->first();
 
-        if ($existing) {
+        $now = now();
+
+        if ($state === 'IN') {
+            if ($existing) {
+                return Response::json([
+                    'success' => false,
+                    'error'   => "IN attendance already marked for the {$payload['shift']} shift."
+                ], 400);
+            }
+
+            // Status Logic: Present if <= 7:00 AM/PM, Late if > 7:00 AM/PM
+            $status = 'present';
+            $localTime = $now->copy()->timezone('Asia/Colombo');
+            $hour = (int)$localTime->format('H');
+            $minute = (int)$localTime->format('i');
+
+            if ($payload['shift'] === 'Morning') {
+                if ($hour > 7 || ($hour === 7 && $minute > 0)) {
+                    $status = 'late';
+                }
+            } else { // Evening
+                if ($hour > 19 || ($hour === 19 && $minute > 0)) {
+                    $status = 'late';
+                }
+            }
+            $payload['marked_at'] = $now;
+            $payload['status']    = $status;
+            $payload['method']    = $payload['method'] ?? 'face';
+
+            $attendance = Attendance::create($payload);
+
             return Response::json([
-                'success' => false,
-                'error'   => 'Attendance already marked for this shift. Delete the existing record to mark again.'
-            ], 400);
+                'success'    => true,
+                'attendance' => $attendance->load('worker', 'worksite', 'subSite'),
+            ], 201);
+        } else { // OUT
+            if (!$existing) {
+                return Response::json([
+                    'success' => false,
+                    'error'   => "You must mark IN for the {$payload['shift']} shift before marking OUT."
+                ], 400);
+            }
+
+            if ($existing->out_marked_at) {
+                return Response::json([
+                    'success' => false,
+                    'error'   => "OUT attendance already marked for the {$payload['shift']} shift."
+                ], 400);
+            }
+
+            $existing->update([
+                'out_marked_at'  => $now,
+                'out_method'     => $payload['method'] ?? 'face',
+                'out_confidence' => $payload['confidence'],
+            ]);
+
+            return Response::json([
+                'success'    => true,
+                'attendance' => $existing->load('worker', 'worksite'),
+            ], 200);
         }
-
-        $attendance = Attendance::create($payload);
-
-        return Response::json([
-            'success'    => true,
-            'attendance' => $attendance->load('worker', 'worksite'),
-        ], 201);
     }
 
     /**
      * List attendance records (optionally filtered by worksite / date).
+     * When include_absents=1 is passed together with worksite_id, date, and shift,
+     * the response also includes synthetic "absent" records for workers who did not
+     * mark IN once the shift window has closed.
      *
-     * GET /attendances?worksite_id=1&date=2026-06-12
+     * GET /attendances?worksite_id=1&date=2026-06-25&shift=Morning&include_absents=1
      */
     public function attendances(Request $request)
     {
-        $query = Attendance::with('worker', 'worksite')->latest('marked_at');
+        $query = Attendance::with('worker', 'worksite', 'subSite')->latest('marked_at');
 
         if ($request->filled('worksite_id')) {
             $query->where('worksite_id', $request->worksite_id);
         }
+        if ($request->filled('sub_site_id')) {
+            $query->where('sub_site_id', $request->sub_site_id);
+        }
         if ($request->filled('date')) {
             $query->whereDate('date', $request->date);
+        }
+        if ($request->filled('shift')) {
+            $query->where('shift', $request->shift);
         }
         if ($request->filled('worker_id')) {
             $query->where('worker_id', $request->worker_id);
         }
+
+        // ── Absent-worker generation ───────────────────────────────────────────
+        if (
+            $request->boolean('include_absents')
+            && $request->filled('worksite_id')
+            && $request->filled('date')
+            && $request->filled('shift')
+        ) {
+            $date    = $request->input('date');      // e.g. "2026-06-25"
+            $shift   = $request->input('shift');     // "Morning" | "Evening"
+            $wsId    = (int) $request->input('worksite_id');
+            $tz      = 'Asia/Colombo';
+            $now     = \Carbon\Carbon::now($tz);
+            $attDate = \Carbon\Carbon::createFromFormat('Y-m-d', $date, $tz)->startOfDay();
+
+            // Determine whether the shift window has fully closed
+            if ($shift === 'Morning') {
+                // Morning shift: 00:00 – 18:00 on attendance date
+                $shiftEnd = $attDate->copy()->setHour(18)->setMinute(0)->setSecond(0);
+            } else {
+                // Evening shift: starts same day, ends 06:00 next day
+                $shiftEnd = $attDate->copy()->addDay()->setHour(6)->setMinute(0)->setSecond(0);
+            }
+
+            $shiftEnded = $now->gte($shiftEnd);
+
+            $realRecords = $query->get();
+            $allRecords  = $realRecords->map(fn($r) => $r->toArray())->values()->toArray();
+
+            if ($shiftEnded) {
+                // Workers assigned to the main worksite who have NOT marked IN
+                $markedIds = $realRecords->pluck('worker_id')->unique()->toArray();
+
+                $absentWorkers = \App\Models\Worker::where('assigned_worksite_id', $wsId)
+                    ->where('status', 'active')
+                    ->whereNotIn('id', $markedIds)
+                    ->get();
+
+                foreach ($absentWorkers as $worker) {
+                    $allRecords[] = [
+                        'id'           => 'absent_' . $worker->id,
+                        'worker_id'    => $worker->id,
+                        'worksite_id'  => $wsId,
+                        'sub_site_id'  => null,
+                        'shift'        => $shift,
+                        'date'         => $date . 'T00:00:00.000000Z',
+                        'marked_at'    => null,
+                        'out_marked_at' => null,
+                        'status'       => 'absent',
+                        'method'       => null,
+                        'worker'       => ['id' => $worker->id, 'name' => $worker->name],
+                        'worksite'     => null,
+                        'sub_site'     => null,
+                    ];
+                }
+            }
+
+            return Response::json(['data' => $allRecords, 'total' => count($allRecords)]);
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         return Response::json($query->paginate(50));
     }

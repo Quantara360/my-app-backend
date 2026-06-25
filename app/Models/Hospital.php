@@ -5,23 +5,23 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Chemical extends Model
+class Hospital extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'name',
-        'quantity',
-        'hazard_level',
-        'storage_location',
+        'description',
         'worksite_id',
-        'tender_requirements',
-        'monthly_purchases',
-        'balance',
     ];
 
     public function worksite()
     {
         return $this->belongsTo(Worksite::class, 'worksite_id');
+    }
+
+    public function subSites()
+    {
+        return $this->hasMany(SubSite::class, 'hospital_id');
     }
 }

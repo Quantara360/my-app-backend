@@ -21,6 +21,8 @@ class Worker extends Model
         'join_date',
         'face_recognition_enabled',
         'face_photo_path',
+        'epf',
+        'gender',
     ];
 
     protected $casts = [
@@ -42,5 +44,10 @@ class Worker extends Model
     public function attendances()
     {
         return $this->hasMany(Attendance::class);
+    }
+
+    public function epfHistories()
+    {
+        return $this->hasMany(WorkerEpfHistory::class);
     }
 }
