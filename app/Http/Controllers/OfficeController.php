@@ -1063,7 +1063,6 @@ class OfficeController extends Controller
         // ── Absent-worker generation ───────────────────────────────────────────
         if (
             $request->boolean('include_absents')
-            && $request->filled('worksite_id')
             && $request->filled('date')
             && $request->filled('shift')
         ) {
@@ -1092,16 +1091,20 @@ class OfficeController extends Controller
                 // Workers assigned to the main worksite who have NOT marked IN
                 $markedIds = $realRecords->pluck('worker_id')->unique()->toArray();
 
-                $absentWorkers = \App\Models\Worker::where('assigned_worksite_id', $wsId)
-                    ->where('status', 'active')
-                    ->whereNotIn('id', $markedIds)
-                    ->get();
+                $absentQuery = \App\Models\Worker::where('status', 'active')
+                    ->whereNotIn('id', $markedIds);
+                
+                if ($request->filled('worksite_id')) {
+                    $absentQuery->where('assigned_worksite_id', $request->input('worksite_id'));
+                }
+
+                $absentWorkers = $absentQuery->get();
 
                 foreach ($absentWorkers as $worker) {
                     $allRecords[] = [
                         'id'           => 'absent_' . $worker->id,
                         'worker_id'    => $worker->id,
-                        'worksite_id'  => $wsId,
+                        'worksite_id'  => $worker->assigned_worksite_id,
                         'sub_site_id'  => null,
                         'shift'        => $shift,
                         'date'         => $date . 'T00:00:00.000000Z',
