@@ -175,7 +175,7 @@ class OfficeController extends Controller
     public function getBookImages(Request $request)
     {
         $request->validate([
-            'sub_site_id' => 'required|exists:sub_sites,id',
+            'sub_site_id' => 'required|integer',
         ]);
 
         $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
@@ -191,7 +191,7 @@ class OfficeController extends Controller
     public function uploadBookImage(Request $request)
     {
         $request->validate([
-            'sub_site_id' => 'required|exists:sub_sites,id',
+            'sub_site_id' => 'required|integer',
             'book_id' => 'required|integer',
             'photo' => 'required|image|max:10240', // 10MB max
         ]);
