@@ -23,24 +23,27 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $admin = User::factory()->create([
-            'name' => 'Admin User',
-            'email' => 'admin@example.com',
+            'name'     => 'Admin User',
+            'username' => 'admin',
+            'email'    => 'admin@example.com',
             'password' => bcrypt('password'),
-            'role' => 'admin',
+            'role'     => 'admin',
         ]);
 
         $supervisor = User::factory()->create([
-            'name' => 'Supervisor User',
-            'email' => 'supervisor@example.com',
+            'name'     => 'Supervisor User',
+            'username' => 'supervisor',
+            'email'    => 'supervisor@example.com',
             'password' => bcrypt('password'),
-            'role' => 'supervisor',
+            'role'     => 'supervisor',
         ]);
 
         $officeStaff = User::factory()->create([
-            'name' => 'Office Staff',
-            'email' => 'office@example.com',
+            'name'     => 'Office Staff',
+            'username' => 'office_staff',
+            'email'    => 'office@example.com',
             'password' => bcrypt('password'),
-            'role' => 'officeStaff',
+            'role'     => 'officeStaff',
         ]);
 
         $cleanit = Worksite::create([
