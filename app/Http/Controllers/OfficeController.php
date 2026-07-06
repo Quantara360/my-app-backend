@@ -62,7 +62,21 @@ class OfficeController extends Controller
             'name'          => 'required|string|max:255',
             'description'   => 'nullable|string',
             'supervisor_id' => 'nullable|exists:users,id',
+            'logo_base64'   => 'nullable|string',
         ]);
+
+        if (!empty($payload['logo_base64'])) {
+            $image_parts = explode(";base64,", $payload['logo_base64']);
+            if (count($image_parts) == 2) {
+                $image_type_aux = explode("image/", $image_parts[0]);
+                $image_type = $image_type_aux[1] ?? 'png';
+                $image_base64 = base64_decode($image_parts[1]);
+                $fileName = 'worksites/' . uniqid() . '.' . $image_type;
+                \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $image_base64);
+                $payload['logo'] = '/storage/' . $fileName;
+            }
+            unset($payload['logo_base64']);
+        }
 
         $worksite = Worksite::create($payload);
 
@@ -75,7 +89,21 @@ class OfficeController extends Controller
             'name'          => 'required|string|max:255',
             'description'   => 'nullable|string',
             'supervisor_id' => 'nullable|exists:users,id',
+            'logo_base64'   => 'nullable|string',
         ]);
+
+        if (!empty($payload['logo_base64'])) {
+            $image_parts = explode(";base64,", $payload['logo_base64']);
+            if (count($image_parts) == 2) {
+                $image_type_aux = explode("image/", $image_parts[0]);
+                $image_type = $image_type_aux[1] ?? 'png';
+                $image_base64 = base64_decode($image_parts[1]);
+                $fileName = 'worksites/' . uniqid() . '.' . $image_type;
+                \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $image_base64);
+                $payload['logo'] = '/storage/' . $fileName;
+            }
+            unset($payload['logo_base64']);
+        }
 
         $worksite->update($payload);
 
