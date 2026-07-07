@@ -20,6 +20,8 @@ use App\Models\Vehicle;
 use App\Models\Jewellery;
 use App\Models\Property;
 use App\Models\OtherPayment;
+use App\Models\BidBond;
+use App\Models\PerformanceBond;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Response;
@@ -1172,5 +1174,83 @@ class OfficeController extends Controller
         $report->save();
 
         return Response::json(['success' => true, 'report' => $report], 201);
+    }
+
+    // Bid Bonds
+    public function bidBonds()
+    {
+        return Response::json(BidBond::orderBy('id', 'desc')->get());
+    }
+
+    public function createBidBond(Request $request)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'tender_status' => 'nullable|string',
+            'duration_date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'is_awarded' => 'nullable|boolean',
+        ]);
+        $bond = BidBond::create($payload);
+        return Response::json($bond, 201);
+    }
+
+    public function updateBidBond(Request $request, BidBond $bidBond)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'tender_status' => 'nullable|string',
+            'duration_date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'is_awarded' => 'nullable|boolean',
+        ]);
+        $bidBond->update($payload);
+        return Response::json($bidBond);
+    }
+
+    public function deleteBidBond(BidBond $bidBond)
+    {
+        $bidBond->delete();
+        return Response::json(['message' => 'Deleted successfully']);
+    }
+
+    // Performance Bonds
+    public function performanceBonds()
+    {
+        return Response::json(PerformanceBond::orderBy('id', 'desc')->get());
+    }
+
+    public function createPerformanceBond(Request $request)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'tender_status' => 'nullable|string',
+        ]);
+        $bond = PerformanceBond::create($payload);
+        return Response::json($bond, 201);
+    }
+
+    public function updatePerformanceBond(Request $request, PerformanceBond $performanceBond)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'tender_status' => 'nullable|string',
+        ]);
+        $performanceBond->update($payload);
+        return Response::json($performanceBond);
+    }
+
+    public function deletePerformanceBond(PerformanceBond $performanceBond)
+    {
+        $performanceBond->delete();
+        return Response::json(['message' => 'Deleted successfully']);
     }
 }

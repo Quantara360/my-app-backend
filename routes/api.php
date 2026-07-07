@@ -116,4 +116,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('personal-files', [\App\Http\Controllers\PersonalDocumentsController::class, 'storeFile']);
     Route::put('personal-files/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'updateFile']);
     Route::delete('personal-files/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'deleteFile']);
+
+    // Bonds Routes
+    Route::get('bid-bonds', [OfficeController::class, 'bidBonds']);
+    Route::post('bid-bonds', [OfficeController::class, 'createBidBond']);
+    Route::put('bid-bonds/{bidBond}', [OfficeController::class, 'updateBidBond']);
+    Route::delete('bid-bonds/{bidBond}', [OfficeController::class, 'deleteBidBond']);
+
+    Route::get('performance-bonds', [OfficeController::class, 'performanceBonds']);
+    Route::post('performance-bonds', [OfficeController::class, 'createPerformanceBond']);
+    Route::put('performance-bonds/{performanceBond}', [OfficeController::class, 'updatePerformanceBond']);
+    Route::delete('performance-bonds/{performanceBond}', [OfficeController::class, 'deletePerformanceBond']);
 });
