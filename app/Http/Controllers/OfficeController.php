@@ -1055,6 +1055,13 @@ class OfficeController extends Controller
         if ($request->filled('date')) {
             $query->whereDate('date', $request->date);
         }
+        if ($request->filled('month')) {
+            $parts = explode('-', $request->month);
+            if (count($parts) === 2) {
+                $query->whereYear('date', $parts[0])
+                      ->whereMonth('date', $parts[1]);
+            }
+        }
         if ($request->filled('shift')) {
             $query->where('shift', $request->shift);
         }
@@ -1124,6 +1131,10 @@ class OfficeController extends Controller
             return Response::json(['data' => $allRecords, 'total' => count($allRecords)]);
         }
         // ─────────────────────────────────────────────────────────────────────
+
+        if ($request->boolean('all')) {
+            return Response::json(['data' => $query->get()]);
+        }
 
         return Response::json($query->paginate(50));
     }
