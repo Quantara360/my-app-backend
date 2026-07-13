@@ -956,6 +956,7 @@ class OfficeController extends Controller
             $payload = $request->validate([
                 'worker_id'   => 'required|exists:workers,id',
                 'worksite_id' => 'nullable',           // accept anything — we override below
+                'hospital_id' => 'nullable|exists:hospitals,id',
                 'sub_site_id' => 'nullable|exists:sub_sites,id',
                 'shift'       => 'required|in:Morning,Evening',
                 'date'        => 'required|date',
@@ -978,6 +979,13 @@ class OfficeController extends Controller
         // Always use the worker's real assigned worksite — don't trust the frontend param
         $payload['worksite_id'] = $worker->assigned_worksite_id;
 
+        // Auto-derive hospital_id from sub_site if not explicitly provided
+        if (empty($payload['hospital_id']) && !empty($payload['sub_site_id'])) {
+            $subSite = \App\Models\SubSite::find($payload['sub_site_id']);
+            if ($subSite) {
+                $payload['hospital_id'] = $subSite->hospital_id;
+            }
+        }
 
         $existing = Attendance::where([
             'worker_id' => $payload['worker_id'],
@@ -1057,10 +1065,13 @@ class OfficeController extends Controller
      */
     public function attendances(Request $request)
     {
-        $query = Attendance::with('worker', 'worksite', 'subSite')->latest('marked_at');
+        $query = Attendance::with('worker', 'worksite', 'hospital', 'subSite')->latest('marked_at');
 
         if ($request->filled('worksite_id')) {
             $query->where('worksite_id', $request->worksite_id);
+        }
+        if ($request->filled('hospital_id')) {
+            $query->where('hospital_id', $request->hospital_id);
         }
         if ($request->filled('sub_site_id')) {
             $query->where('sub_site_id', $request->sub_site_id);
@@ -1210,6 +1221,8 @@ class OfficeController extends Controller
     {
         $payload = $request->validate([
             'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
             'tender_status' => 'nullable|string',
             'duration_date' => 'nullable|string',
             'description' => 'nullable|string',
@@ -1224,6 +1237,8 @@ class OfficeController extends Controller
     {
         $payload = $request->validate([
             'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
             'tender_status' => 'nullable|string',
             'duration_date' => 'nullable|string',
             'description' => 'nullable|string',
@@ -1250,6 +1265,8 @@ class OfficeController extends Controller
     {
         $payload = $request->validate([
             'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
             'date' => 'nullable|string',
             'description' => 'nullable|string',
             'amount' => 'nullable|numeric',
@@ -1263,6 +1280,8 @@ class OfficeController extends Controller
     {
         $payload = $request->validate([
             'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
             'date' => 'nullable|string',
             'description' => 'nullable|string',
             'amount' => 'nullable|numeric',

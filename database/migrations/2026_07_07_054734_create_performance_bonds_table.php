@@ -14,6 +14,8 @@ return new class extends Migration
         Schema::create('performance_bonds', function (Blueprint $table) {
             $table->id();
             $table->string('valid_period')->nullable();
+            $table->string('bond_name')->nullable();
+            $table->string('bond_number')->nullable();
             $table->string('date')->nullable();
             $table->text('description')->nullable();
             $table->decimal('amount', 15, 2)->default(0);

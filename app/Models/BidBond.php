@@ -11,6 +11,8 @@ class BidBond extends Model
 
     protected $fillable = [
         'valid_period',
+        'bond_name',
+        'bond_number',
         'tender_status',
         'duration_date',
         'description',

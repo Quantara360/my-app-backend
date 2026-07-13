@@ -11,6 +11,8 @@ class PerformanceBond extends Model
 
     protected $fillable = [
         'valid_period',
+        'bond_name',
+        'bond_number',
         'date',
         'description',
         'amount',

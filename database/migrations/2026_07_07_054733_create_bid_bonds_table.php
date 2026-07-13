@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->string('valid_period')->nullable();
             $table->string('tender_status')->nullable();
+            $table->string('bond_name')->nullable();
+            $table->string('bond_number')->nullable();
             $table->string('duration_date')->nullable();
             $table->text('description')->nullable();
             $table->decimal('amount', 15, 2)->default(0);
