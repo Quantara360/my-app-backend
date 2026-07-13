@@ -257,9 +257,22 @@ class OfficeController extends Controller
         return Response::json(['message' => 'Deleted successfully']);
     }
 
-    public function workers()
+    public function workers(Request $request)
     {
-        return Response::json(Worker::with(['worksite', 'epfHistories'])->paginate(50));
+        $query = Worker::with(['worksite', 'epfHistories']);
+
+        if ($request->filled('worksite_id')) {
+            $query->where('assigned_worksite_id', $request->worksite_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->boolean('all')) {
+            return Response::json($query->get());
+        }
+
+        return Response::json($query->paginate(50));
     }
 
     public function workerEpfHistory(Worker $worker)
