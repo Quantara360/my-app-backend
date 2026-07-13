@@ -12,6 +12,7 @@ class Attendance extends Model
     protected $fillable = [
         'worker_id',
         'worksite_id',
+        'hospital_id',
         'sub_site_id',
         'shift',
         'date',
@@ -42,8 +43,14 @@ class Attendance extends Model
         return $this->belongsTo(Worksite::class);
     }
 
+    public function hospital()
+    {
+        return $this->belongsTo(Hospital::class);
+    }
+
     public function subSite()
     {
         return $this->belongsTo(\App\Models\SubSite::class, 'sub_site_id');
     }
 }
+
