@@ -22,6 +22,8 @@ use App\Models\Property;
 use App\Models\OtherPayment;
 use App\Models\BidBond;
 use App\Models\PerformanceBond;
+use App\Models\CashInHandEntry;
+use App\Models\BankEntry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Response;
@@ -1002,18 +1004,18 @@ class OfficeController extends Controller
                 ], 400);
             }
 
-            // Status Logic: Present if <= 7:00 AM/PM, Late if > 7:00 AM/PM
+            // Status Logic: Present if <= 7:30 AM/PM, Late if > 7:30 AM/PM
             $status = 'present';
             $localTime = $now->copy()->timezone('Asia/Colombo');
             $hour = (int)$localTime->format('H');
             $minute = (int)$localTime->format('i');
 
             if ($payload['shift'] === 'Morning') {
-                if ($hour > 7 || ($hour === 7 && $minute > 0)) {
+                if ($hour > 7 || ($hour === 7 && $minute > 30)) {
                     $status = 'late';
                 }
             } else { // Evening
-                if ($hour > 19 || ($hour === 19 && $minute > 0)) {
+                if ($hour > 19 || ($hour === 19 && $minute > 30)) {
                     $status = 'late';
                 }
             }
@@ -1295,5 +1297,91 @@ class OfficeController extends Controller
     {
         $performanceBond->delete();
         return Response::json(['message' => 'Deleted successfully']);
+    }
+
+    // ── Cash In Hand Entries ─────────────────────────────────────────────────
+
+    public function cashInHandEntries()
+    {
+        return Response::json(['data' => CashInHandEntry::orderBy('date', 'asc')->get()]);
+    }
+
+    public function createCashInHandEntry(Request $request)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $entry = CashInHandEntry::create($payload);
+        return Response::json(['data' => $entry], 201);
+    }
+
+    public function updateCashInHandEntry(Request $request, CashInHandEntry $cashInHandEntry)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $cashInHandEntry->update($payload);
+        return Response::json(['data' => $cashInHandEntry->refresh()]);
+    }
+
+    public function deleteCashInHandEntry(CashInHandEntry $cashInHandEntry)
+    {
+        $cashInHandEntry->delete();
+        return Response::json(['deleted' => true]);
+    }
+
+    // ── Bank Entries ─────────────────────────────────────────────────────────
+
+    public function bankEntries()
+    {
+        return Response::json(['data' => BankEntry::orderBy('date', 'asc')->get()]);
+    }
+
+    public function createBankEntry(Request $request)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $entry = BankEntry::create($payload);
+        return Response::json(['data' => $entry], 201);
+    }
+
+    public function updateBankEntry(Request $request, BankEntry $bankEntry)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $bankEntry->update($payload);
+        return Response::json(['data' => $bankEntry->refresh()]);
+    }
+
+    public function deleteBankEntry(BankEntry $bankEntry)
+    {
+        $bankEntry->delete();
+        return Response::json(['deleted' => true]);
     }
 }

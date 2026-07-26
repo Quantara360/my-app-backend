@@ -127,4 +127,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('performance-bonds', [OfficeController::class, 'createPerformanceBond']);
     Route::put('performance-bonds/{performanceBond}', [OfficeController::class, 'updatePerformanceBond']);
     Route::delete('performance-bonds/{performanceBond}', [OfficeController::class, 'deletePerformanceBond']);
+
+    // Accounts — Cash In Hand
+    Route::get('cash-in-hand-entries', [OfficeController::class, 'cashInHandEntries']);
+    Route::post('cash-in-hand-entries', [OfficeController::class, 'createCashInHandEntry']);
+    Route::put('cash-in-hand-entries/{cashInHandEntry}', [OfficeController::class, 'updateCashInHandEntry']);
+    Route::delete('cash-in-hand-entries/{cashInHandEntry}', [OfficeController::class, 'deleteCashInHandEntry']);
+
+    // Accounts — Bank
+    Route::get('bank-entries', [OfficeController::class, 'bankEntries']);
+    Route::post('bank-entries', [OfficeController::class, 'createBankEntry']);
+    Route::put('bank-entries/{bankEntry}', [OfficeController::class, 'updateBankEntry']);
+    Route::delete('bank-entries/{bankEntry}', [OfficeController::class, 'deleteBankEntry']);
 });
+
