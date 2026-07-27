@@ -14,25 +14,44 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $data = $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'username' => ['required', 'string', 'max:255', 'unique:users,username', 'alpha_dash'],
-            'email'    => ['required', 'email', 'unique:users,email', 'max:255'],
-            'password' => ['required', 'string', 'min:8'],
-            'role'     => ['required', 'in:supervisor,officeStaff,admin'],
+            'name'         => ['required', 'string', 'max:255'],
+            'username'     => ['required', 'string', 'max:255', 'unique:users,username', 'alpha_dash'],
+            'email'        => ['required', 'email', 'unique:users,email', 'max:255'],
+            'password'     => ['required', 'string', 'min:8'],
+            'role'         => ['required', 'in:supervisor,officeStaff,admin'],
+            'worksite_id'  => ['nullable', 'exists:worksites,id'],
+            'hospital_ids' => ['nullable', 'array'],
+            'hospital_ids.*' => ['integer', 'exists:hospitals,id'],
         ]);
 
-        $user = User::create([
-            'name'     => $data['name'],
-            'username' => $data['username'],
-            'email'    => $data['email'],
-            'password' => Hash::make($data['password']),
-            'role'     => $data['role'],
+        // If hospital_ids provided, verify all hospitals belong to the given worksite
+        if (!empty($data['hospital_ids']) && !empty($data['worksite_id'])) {
+            $invalidCount = \App\Models\Hospital::whereIn('id', $data['hospital_ids'])
+                ->where('worksite_id', '!=', $data['worksite_id'])
+                ->count();
+            if ($invalidCount > 0) {
+                return Response::json(['message' => 'Some hospitals do not belong to the selected main site.'], 422);
+            }
+        }
+
+        $user = \App\Models\User::create([
+            'name'        => $data['name'],
+            'username'    => $data['username'],
+            'email'       => $data['email'],
+            'password'    => Hash::make($data['password']),
+            'role'        => $data['role'],
+            'worksite_id' => $data['worksite_id'] ?? null,
         ]);
+
+        // Sync hospital scopes (pivot)
+        if (!empty($data['hospital_ids'])) {
+            $user->hospitals()->sync($data['hospital_ids']);
+        }
 
         $token = $user->createToken('api-token')->plainTextToken;
 
         return Response::json([
-            'user'         => $user->only(['id', 'name', 'username', 'email', 'role']),
+            'user'         => $this->formatUser($user),
             'access_token' => $token,
             'token_type'   => 'Bearer',
         ], 201);
@@ -69,7 +88,7 @@ class AuthController extends Controller
         $token = $user->createToken('api-token')->plainTextToken;
 
         return Response::json([
-            'user'         => $user->only(['id', 'name', 'username', 'email', 'role']),
+            'user'         => $this->formatUser($user),
             'access_token' => $token,
             'token_type'   => 'Bearer',
         ]);
@@ -77,7 +96,7 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
-        return Response::json($request->user()?->only(['id', 'name', 'username', 'email', 'role']));
+        return Response::json($this->formatUser($request->user()));
     }
 
     public function logout(Request $request)
@@ -112,8 +131,25 @@ class AuthController extends Controller
 
         return Response::json([
             'message' => 'Profile updated successfully',
-            'user'    => $user->only(['id', 'name', 'username', 'email', 'role'])
+            'user'    => $this->formatUser($user)
         ]);
+    }
+
+    /**
+     * Format a user for API responses — always includes scope fields.
+     */
+    private function formatUser(\App\Models\User $user): array
+    {
+        $user->loadMissing('hospitals');
+        return [
+            'id'           => $user->id,
+            'name'         => $user->name,
+            'username'     => $user->username,
+            'email'        => $user->email,
+            'role'         => $user->role,
+            'worksite_id'  => $user->worksite_id,
+            'hospital_ids' => $user->hospitals->pluck('id')->values()->all(),
+        ];
     }
 }
 

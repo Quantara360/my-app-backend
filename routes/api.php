@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('throttle:30,1')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+
+    Route::get('public-worksites', [OfficeController::class, 'publicWorksites']);
+    Route::get('public-hospitals', [OfficeController::class, 'publicHospitals']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

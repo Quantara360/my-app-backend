@@ -16,8 +16,8 @@ return new class extends Migration
             if (Schema::hasColumn('peticash_transactions', 'requested_by')) {
                 if (DB::getDriverName() !== 'sqlite') {
                     $table->dropForeign(['requested_by']);
+                    $table->dropColumn('requested_by');
                 }
-                $table->dropColumn('requested_by');
             }
             if (Schema::hasColumn('peticash_transactions', 'title')) {
                 $table->dropColumn('title');

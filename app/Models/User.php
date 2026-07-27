@@ -25,6 +25,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'worksite_id',
     ];
 
     /**
@@ -48,5 +49,17 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /** The main site this supervisor is scoped to (null = all sites) */
+    public function worksite()
+    {
+        return $this->belongsTo(\App\Models\Worksite::class, 'worksite_id');
+    }
+
+    /** The specific hospitals this supervisor is scoped to (empty = all hospitals in worksite) */
+    public function hospitals()
+    {
+        return $this->belongsToMany(\App\Models\Hospital::class, 'user_hospitals');
     }
 }

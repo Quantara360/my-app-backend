@@ -31,22 +31,52 @@ use Illuminate\Support\Facades\Storage;
 
 class OfficeController extends Controller
 {
-    public function worksites(Request $request)
+    // ─── Public Endpoints (for Registration) ──────────────────────────────────
+    
+    public function publicWorksites(Request $request)
     {
         $query = Worksite::query();
-        
-        if ($request->has('parent_id')) {
-            // allows finding children of a specific worksite. Use parent_id=null for root sites
-            $parentId = $request->query('parent_id');
-            if (strtolower($parentId) === 'null' || $parentId === '') {
-                $query->whereNull('parent_id');
-            } else {
-                $query->where('parent_id', $parentId);
-            }
-        }
-        
         if ($request->has('type')) {
             $query->where('type', $request->query('type'));
+        }
+        return Response::json($query->get()->map(function ($site) {
+            $site->parent_id = $site->parent_id !== null && $site->parent_id !== '' ? (int) $site->parent_id : null;
+            return $site;
+        }));
+    }
+
+    public function publicHospitals(Request $request)
+    {
+        $query = Hospital::query();
+        if ($request->has('worksite_id')) {
+            $query->where('worksite_id', $request->query('worksite_id'));
+        }
+        return Response::json($query->get());
+    }
+
+    // ─── Protected Endpoints ──────────────────────────────────────────────────
+
+    public function worksites(Request $request)
+    {
+        $user = $request->user();
+        $query = Worksite::query();
+
+        // Supervisor scope: restrict to their assigned main site
+        if ($user && $user->role === 'supervisor' && $user->worksite_id) {
+            $query->where('id', $user->worksite_id);
+        } else {
+            if ($request->has('parent_id')) {
+                $parentId = $request->query('parent_id');
+                if (strtolower($parentId) === 'null' || $parentId === '') {
+                    $query->whereNull('parent_id');
+                } else {
+                    $query->where('parent_id', $parentId);
+                }
+            }
+
+            if ($request->has('type')) {
+                $query->where('type', $request->query('type'));
+            }
         }
 
         return Response::json($query->get()->map(function ($site) {
@@ -124,10 +154,27 @@ class OfficeController extends Controller
 
     public function hospitals(Request $request)
     {
+        $user = $request->user();
         $query = Hospital::query();
+
         if ($request->has('worksite_id')) {
             $query->where('worksite_id', $request->query('worksite_id'));
         }
+
+        // Supervisor scope: if user has hospital restrictions, apply them
+        if ($user && $user->role === 'supervisor') {
+            $user->loadMissing('hospitals');
+            $hospitalIds = $user->hospitals->pluck('id');
+            if ($hospitalIds->isNotEmpty()) {
+                // Only show the hospitals they are scoped to
+                $query->whereIn('id', $hospitalIds);
+            } elseif ($user->worksite_id) {
+                // No specific hospitals — show all hospitals in their worksite
+                $query->where('worksite_id', $user->worksite_id);
+            }
+            // If neither: supervisor has no scope restriction, show all (backward compat)
+        }
+
         return Response::json($query->get());
     }
 
@@ -165,10 +212,26 @@ class OfficeController extends Controller
 
     public function subSites(Request $request)
     {
+        $user = $request->user();
         $query = SubSite::query();
+
         if ($request->has('hospital_id')) {
             $query->where('hospital_id', $request->query('hospital_id'));
         }
+
+        // Supervisor scope: restrict subsites to visible hospitals
+        if ($user && $user->role === 'supervisor') {
+            $user->loadMissing('hospitals');
+            $hospitalIds = $user->hospitals->pluck('id');
+            if ($hospitalIds->isNotEmpty()) {
+                $query->whereIn('hospital_id', $hospitalIds);
+            } elseif ($user->worksite_id) {
+                // Scope to all hospitals under their worksite
+                $allowedHospitalIds = Hospital::where('worksite_id', $user->worksite_id)->pluck('id');
+                $query->whereIn('hospital_id', $allowedHospitalIds);
+            }
+        }
+
         return Response::json($query->get());
     }
 
