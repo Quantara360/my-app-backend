@@ -11,6 +11,7 @@ class SubSiteImage extends Model
 
     protected $fillable = [
         'sub_site_id',
+        'worksite_id',
         'book_id',
         'image_path',
     ];

@@ -269,12 +269,26 @@ class OfficeController extends Controller
 
     public function getBookImages(Request $request)
     {
-        $request->validate([
-            'sub_site_id' => 'required|integer',
-        ]);
+        // Supports two scoping modes:
+        //   sub_site_id  → images for a specific sub-site (e.g. Castle)
+        //   worksite_id  → images for a worksite that has no sub-sites (e.g. Clean)
+        // This prevents collision when worksites.id and sub_sites.id share numbers.
+        $hasSubSite  = $request->has('sub_site_id') && $request->query('sub_site_id') !== null;
+        $hasWorksite = $request->has('worksite_id') && $request->query('worksite_id') !== null;
 
-        $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
-                             ->where('created_at', '>=', now()->subHours(24));
+        if (!$hasSubSite && !$hasWorksite) {
+            return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
+        }
+
+        if ($hasSubSite) {
+            $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
+                                 ->whereNull('worksite_id')
+                                 ->where('created_at', '>=', now()->subHours(24));
+        } else {
+            $query = SubSiteImage::where('worksite_id', $request->query('worksite_id'))
+                                 ->whereNull('sub_site_id')
+                                 ->where('created_at', '>=', now()->subHours(24));
+        }
 
         if ($request->has('book_id')) {
             $query->where('book_id', $request->query('book_id'));
@@ -285,30 +299,43 @@ class OfficeController extends Controller
 
     public function uploadBookImage(Request $request)
     {
+        // Accept either sub_site_id (sub-site scope) or worksite_id (worksite scope)
         $request->validate([
-            'sub_site_id' => 'required|integer',
-            'book_id' => 'required|integer',
-            'photo' => 'required|image|max:10240', // 10MB max
+            'sub_site_id' => 'nullable|integer',
+            'worksite_id' => 'nullable|integer',
+            'book_id'     => 'required|integer',
+            'photo'       => 'required|image|max:10240',
         ]);
 
-        $subSiteId = $request->input('sub_site_id');
-        $bookId = $request->input('book_id');
+        $subSiteId  = $request->input('sub_site_id');
+        $worksiteId = $request->input('worksite_id');
+        $bookId     = $request->input('book_id');
 
-        $activeImagesCount = SubSiteImage::where('sub_site_id', $subSiteId)
-                                         ->where('book_id', $bookId)
-                                         ->where('created_at', '>=', now()->subHours(24))
-                                         ->count();
+        if (!$subSiteId && !$worksiteId) {
+            return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
+        }
 
-        if ($activeImagesCount >= 10) {
+        // Count active images for this exact scope
+        $countQuery = SubSiteImage::where('book_id', $bookId)
+                                  ->where('created_at', '>=', now()->subHours(24));
+        if ($subSiteId) {
+            $countQuery->where('sub_site_id', $subSiteId)->whereNull('worksite_id');
+        } else {
+            $countQuery->where('worksite_id', $worksiteId)->whereNull('sub_site_id');
+        }
+
+        if ($countQuery->count() >= 10) {
             return Response::json(['error' => 'Maximum limit of 10 images reached for this book within the last 24 hours.'], 422);
         }
 
-        $path = $request->file('photo')->store("sub_site_images/{$subSiteId}/book_{$bookId}", 'public');
+        $scopeFolder = $subSiteId ? "sub_{$subSiteId}" : "worksite_{$worksiteId}";
+        $path = $request->file('photo')->store("sub_site_images/{$scopeFolder}/book_{$bookId}", 'public');
 
         $image = SubSiteImage::create([
-            'sub_site_id' => $subSiteId,
-            'book_id' => $bookId,
-            'image_path' => $path,
+            'sub_site_id' => $subSiteId ?: null,
+            'worksite_id' => $worksiteId ?: null,
+            'book_id'     => $bookId,
+            'image_path'  => $path,
         ]);
 
         return Response::json($image, 201);
