@@ -801,7 +801,7 @@ class OfficeController extends Controller
 
     public function __construct()
     {
-        $this->faceServiceUrl = env('FACE_SERVICE_URL', 'http://127.0.0.1:5050');
+        $this->faceServiceUrl = env('FACE_SERVICE_URL', 'http://ai:5050');
     }
 
     /**
