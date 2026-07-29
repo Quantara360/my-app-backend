@@ -281,9 +281,15 @@ class OfficeController extends Controller
         }
 
         if ($hasSubSite) {
-            $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
-                                 ->whereNull('worksite_id')
-                                 ->where('created_at', '>=', now()->subHours(24));
+            $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'));
+            // Also scope by worksite_id if provided — prevents collision when
+            // sub-sites of different worksites share the same numeric sub_site_id
+            if ($request->has('worksite_id') && $request->query('worksite_id') !== null) {
+                $query->where('worksite_id', $request->query('worksite_id'));
+            } else {
+                $query->whereNull('worksite_id');
+            }
+            $query->where('created_at', '>=', now()->subHours(24));
         } else {
             $query = SubSiteImage::where('worksite_id', $request->query('worksite_id'))
                                  ->whereNull('sub_site_id')
@@ -333,6 +339,9 @@ class OfficeController extends Controller
 
         $image = SubSiteImage::create([
             'sub_site_id' => $subSiteId ?: null,
+            // Always store worksite_id — when both are provided it lets us
+            // distinguish images from sub-sites of different worksites that
+            // happen to share the same numeric sub_site_id
             'worksite_id' => $worksiteId ?: null,
             'book_id'     => $bookId,
             'image_path'  => $path,
