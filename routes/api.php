@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('throttle:30,1')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+
+    Route::get('public-worksites', [OfficeController::class, 'publicWorksites']);
+    Route::get('public-hospitals', [OfficeController::class, 'publicHospitals']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -116,4 +119,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('personal-files', [\App\Http\Controllers\PersonalDocumentsController::class, 'storeFile']);
     Route::put('personal-files/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'updateFile']);
     Route::delete('personal-files/{id}', [\App\Http\Controllers\PersonalDocumentsController::class, 'deleteFile']);
+
+    // Bonds Routes
+    Route::get('bid-bonds', [OfficeController::class, 'bidBonds']);
+    Route::post('bid-bonds', [OfficeController::class, 'createBidBond']);
+    Route::put('bid-bonds/{bidBond}', [OfficeController::class, 'updateBidBond']);
+    Route::delete('bid-bonds/{bidBond}', [OfficeController::class, 'deleteBidBond']);
+
+    Route::get('performance-bonds', [OfficeController::class, 'performanceBonds']);
+    Route::post('performance-bonds', [OfficeController::class, 'createPerformanceBond']);
+    Route::put('performance-bonds/{performanceBond}', [OfficeController::class, 'updatePerformanceBond']);
+    Route::delete('performance-bonds/{performanceBond}', [OfficeController::class, 'deletePerformanceBond']);
+
+    // Accounts — Cash In Hand
+    Route::get('cash-in-hand-entries', [OfficeController::class, 'cashInHandEntries']);
+    Route::post('cash-in-hand-entries', [OfficeController::class, 'createCashInHandEntry']);
+    Route::put('cash-in-hand-entries/{cashInHandEntry}', [OfficeController::class, 'updateCashInHandEntry']);
+    Route::delete('cash-in-hand-entries/{cashInHandEntry}', [OfficeController::class, 'deleteCashInHandEntry']);
+
+    // Accounts — Bank
+    Route::get('bank-entries', [OfficeController::class, 'bankEntries']);
+    Route::post('bank-entries', [OfficeController::class, 'createBankEntry']);
+    Route::put('bank-entries/{bankEntry}', [OfficeController::class, 'updateBankEntry']);
+    Route::delete('bank-entries/{bankEntry}', [OfficeController::class, 'deleteBankEntry']);
 });
+

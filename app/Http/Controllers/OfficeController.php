@@ -20,6 +20,10 @@ use App\Models\Vehicle;
 use App\Models\Jewellery;
 use App\Models\Property;
 use App\Models\OtherPayment;
+use App\Models\BidBond;
+use App\Models\PerformanceBond;
+use App\Models\CashInHandEntry;
+use App\Models\BankEntry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Response;
@@ -27,22 +31,52 @@ use Illuminate\Support\Facades\Storage;
 
 class OfficeController extends Controller
 {
-    public function worksites(Request $request)
+    // ─── Public Endpoints (for Registration) ──────────────────────────────────
+    
+    public function publicWorksites(Request $request)
     {
         $query = Worksite::query();
-        
-        if ($request->has('parent_id')) {
-            // allows finding children of a specific worksite. Use parent_id=null for root sites
-            $parentId = $request->query('parent_id');
-            if (strtolower($parentId) === 'null' || $parentId === '') {
-                $query->whereNull('parent_id');
-            } else {
-                $query->where('parent_id', $parentId);
-            }
-        }
-        
         if ($request->has('type')) {
             $query->where('type', $request->query('type'));
+        }
+        return Response::json($query->get()->map(function ($site) {
+            $site->parent_id = $site->parent_id !== null && $site->parent_id !== '' ? (int) $site->parent_id : null;
+            return $site;
+        }));
+    }
+
+    public function publicHospitals(Request $request)
+    {
+        $query = Hospital::query();
+        if ($request->has('worksite_id')) {
+            $query->where('worksite_id', $request->query('worksite_id'));
+        }
+        return Response::json($query->get());
+    }
+
+    // ─── Protected Endpoints ──────────────────────────────────────────────────
+
+    public function worksites(Request $request)
+    {
+        $user = $request->user();
+        $query = Worksite::query();
+
+        // Supervisor scope: restrict to their assigned main site
+        if ($user && $user->role === 'supervisor' && $user->worksite_id) {
+            $query->where('id', $user->worksite_id);
+        } else {
+            if ($request->has('parent_id')) {
+                $parentId = $request->query('parent_id');
+                if (strtolower($parentId) === 'null' || $parentId === '') {
+                    $query->whereNull('parent_id');
+                } else {
+                    $query->where('parent_id', $parentId);
+                }
+            }
+
+            if ($request->has('type')) {
+                $query->where('type', $request->query('type'));
+            }
         }
 
         return Response::json($query->get()->map(function ($site) {
@@ -62,7 +96,21 @@ class OfficeController extends Controller
             'name'          => 'required|string|max:255',
             'description'   => 'nullable|string',
             'supervisor_id' => 'nullable|exists:users,id',
+            'logo_base64'   => 'nullable|string',
         ]);
+
+        if (!empty($payload['logo_base64'])) {
+            $image_parts = explode(";base64,", $payload['logo_base64']);
+            if (count($image_parts) == 2) {
+                $image_type_aux = explode("image/", $image_parts[0]);
+                $image_type = $image_type_aux[1] ?? 'png';
+                $image_base64 = base64_decode($image_parts[1]);
+                $fileName = 'worksites/' . uniqid() . '.' . $image_type;
+                \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $image_base64);
+                $payload['logo'] = '/storage/' . $fileName;
+            }
+            unset($payload['logo_base64']);
+        }
 
         $worksite = Worksite::create($payload);
 
@@ -75,7 +123,21 @@ class OfficeController extends Controller
             'name'          => 'required|string|max:255',
             'description'   => 'nullable|string',
             'supervisor_id' => 'nullable|exists:users,id',
+            'logo_base64'   => 'nullable|string',
         ]);
+
+        if (!empty($payload['logo_base64'])) {
+            $image_parts = explode(";base64,", $payload['logo_base64']);
+            if (count($image_parts) == 2) {
+                $image_type_aux = explode("image/", $image_parts[0]);
+                $image_type = $image_type_aux[1] ?? 'png';
+                $image_base64 = base64_decode($image_parts[1]);
+                $fileName = 'worksites/' . uniqid() . '.' . $image_type;
+                \Illuminate\Support\Facades\Storage::disk('public')->put($fileName, $image_base64);
+                $payload['logo'] = '/storage/' . $fileName;
+            }
+            unset($payload['logo_base64']);
+        }
 
         $worksite->update($payload);
 
@@ -92,10 +154,27 @@ class OfficeController extends Controller
 
     public function hospitals(Request $request)
     {
+        $user = $request->user();
         $query = Hospital::query();
+
         if ($request->has('worksite_id')) {
             $query->where('worksite_id', $request->query('worksite_id'));
         }
+
+        // Supervisor scope: if user has hospital restrictions, apply them
+        if ($user && $user->role === 'supervisor') {
+            $user->loadMissing('hospitals');
+            $hospitalIds = $user->hospitals->pluck('id');
+            if ($hospitalIds->isNotEmpty()) {
+                // Only show the hospitals they are scoped to
+                $query->whereIn('id', $hospitalIds);
+            } elseif ($user->worksite_id) {
+                // No specific hospitals — show all hospitals in their worksite
+                $query->where('worksite_id', $user->worksite_id);
+            }
+            // If neither: supervisor has no scope restriction, show all (backward compat)
+        }
+
         return Response::json($query->get());
     }
 
@@ -133,10 +212,26 @@ class OfficeController extends Controller
 
     public function subSites(Request $request)
     {
+        $user = $request->user();
         $query = SubSite::query();
+
         if ($request->has('hospital_id')) {
             $query->where('hospital_id', $request->query('hospital_id'));
         }
+
+        // Supervisor scope: restrict subsites to visible hospitals
+        if ($user && $user->role === 'supervisor') {
+            $user->loadMissing('hospitals');
+            $hospitalIds = $user->hospitals->pluck('id');
+            if ($hospitalIds->isNotEmpty()) {
+                $query->whereIn('hospital_id', $hospitalIds);
+            } elseif ($user->worksite_id) {
+                // Scope to all hospitals under their worksite
+                $allowedHospitalIds = Hospital::where('worksite_id', $user->worksite_id)->pluck('id');
+                $query->whereIn('hospital_id', $allowedHospitalIds);
+            }
+        }
+
         return Response::json($query->get());
     }
 
@@ -174,12 +269,26 @@ class OfficeController extends Controller
 
     public function getBookImages(Request $request)
     {
-        $request->validate([
-            'sub_site_id' => 'required|exists:sub_sites,id',
-        ]);
+        // Supports two scoping modes:
+        //   sub_site_id  → images for a specific sub-site (e.g. Castle)
+        //   worksite_id  → images for a worksite that has no sub-sites (e.g. Clean)
+        // This prevents collision when worksites.id and sub_sites.id share numbers.
+        $hasSubSite  = $request->has('sub_site_id') && $request->query('sub_site_id') !== null;
+        $hasWorksite = $request->has('worksite_id') && $request->query('worksite_id') !== null;
 
-        $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
-                             ->where('created_at', '>=', now()->subHours(24));
+        if (!$hasSubSite && !$hasWorksite) {
+            return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
+        }
+
+        if ($hasSubSite) {
+            $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'))
+                                 ->whereNull('worksite_id')
+                                 ->where('created_at', '>=', now()->subHours(24));
+        } else {
+            $query = SubSiteImage::where('worksite_id', $request->query('worksite_id'))
+                                 ->whereNull('sub_site_id')
+                                 ->where('created_at', '>=', now()->subHours(24));
+        }
 
         if ($request->has('book_id')) {
             $query->where('book_id', $request->query('book_id'));
@@ -190,30 +299,43 @@ class OfficeController extends Controller
 
     public function uploadBookImage(Request $request)
     {
+        // Accept either sub_site_id (sub-site scope) or worksite_id (worksite scope)
         $request->validate([
-            'sub_site_id' => 'required|exists:sub_sites,id',
-            'book_id' => 'required|integer',
-            'photo' => 'required|image|max:10240', // 10MB max
+            'sub_site_id' => 'nullable|integer',
+            'worksite_id' => 'nullable|integer',
+            'book_id'     => 'required|integer',
+            'photo'       => 'required|image|max:10240',
         ]);
 
-        $subSiteId = $request->input('sub_site_id');
-        $bookId = $request->input('book_id');
+        $subSiteId  = $request->input('sub_site_id');
+        $worksiteId = $request->input('worksite_id');
+        $bookId     = $request->input('book_id');
 
-        $activeImagesCount = SubSiteImage::where('sub_site_id', $subSiteId)
-                                         ->where('book_id', $bookId)
-                                         ->where('created_at', '>=', now()->subHours(24))
-                                         ->count();
+        if (!$subSiteId && !$worksiteId) {
+            return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
+        }
 
-        if ($activeImagesCount >= 10) {
+        // Count active images for this exact scope
+        $countQuery = SubSiteImage::where('book_id', $bookId)
+                                  ->where('created_at', '>=', now()->subHours(24));
+        if ($subSiteId) {
+            $countQuery->where('sub_site_id', $subSiteId)->whereNull('worksite_id');
+        } else {
+            $countQuery->where('worksite_id', $worksiteId)->whereNull('sub_site_id');
+        }
+
+        if ($countQuery->count() >= 10) {
             return Response::json(['error' => 'Maximum limit of 10 images reached for this book within the last 24 hours.'], 422);
         }
 
-        $path = $request->file('photo')->store("sub_site_images/{$subSiteId}/book_{$bookId}", 'public');
+        $scopeFolder = $subSiteId ? "sub_{$subSiteId}" : "worksite_{$worksiteId}";
+        $path = $request->file('photo')->store("sub_site_images/{$scopeFolder}/book_{$bookId}", 'public');
 
         $image = SubSiteImage::create([
-            'sub_site_id' => $subSiteId,
-            'book_id' => $bookId,
-            'image_path' => $path,
+            'sub_site_id' => $subSiteId ?: null,
+            'worksite_id' => $worksiteId ?: null,
+            'book_id'     => $bookId,
+            'image_path'  => $path,
         ]);
 
         return Response::json($image, 201);
@@ -227,9 +349,22 @@ class OfficeController extends Controller
         return Response::json(['message' => 'Deleted successfully']);
     }
 
-    public function workers()
+    public function workers(Request $request)
     {
-        return Response::json(Worker::with(['worksite', 'epfHistories'])->paginate(50));
+        $query = Worker::with(['worksite', 'epfHistories']);
+
+        if ($request->filled('worksite_id')) {
+            $query->where('assigned_worksite_id', $request->worksite_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->boolean('all')) {
+            return Response::json($query->get());
+        }
+
+        return Response::json($query->paginate(50));
     }
 
     public function workerEpfHistory(Worker $worker)
@@ -913,6 +1048,7 @@ class OfficeController extends Controller
             $payload = $request->validate([
                 'worker_id'   => 'required|exists:workers,id',
                 'worksite_id' => 'nullable',           // accept anything — we override below
+                'hospital_id' => 'nullable|exists:hospitals,id',
                 'sub_site_id' => 'nullable|exists:sub_sites,id',
                 'shift'       => 'required|in:Morning,Evening',
                 'date'        => 'required|date',
@@ -935,6 +1071,13 @@ class OfficeController extends Controller
         // Always use the worker's real assigned worksite — don't trust the frontend param
         $payload['worksite_id'] = $worker->assigned_worksite_id;
 
+        // Auto-derive hospital_id from sub_site if not explicitly provided
+        if (empty($payload['hospital_id']) && !empty($payload['sub_site_id'])) {
+            $subSite = \App\Models\SubSite::find($payload['sub_site_id']);
+            if ($subSite) {
+                $payload['hospital_id'] = $subSite->hospital_id;
+            }
+        }
 
         $existing = Attendance::where([
             'worker_id' => $payload['worker_id'],
@@ -951,18 +1094,18 @@ class OfficeController extends Controller
                 ], 400);
             }
 
-            // Status Logic: Present if <= 7:00 AM/PM, Late if > 7:00 AM/PM
+            // Status Logic: Present if <= 7:30 AM/PM, Late if > 7:30 AM/PM
             $status = 'present';
             $localTime = $now->copy()->timezone('Asia/Colombo');
             $hour = (int)$localTime->format('H');
             $minute = (int)$localTime->format('i');
 
             if ($payload['shift'] === 'Morning') {
-                if ($hour > 7 || ($hour === 7 && $minute > 0)) {
+                if ($hour > 7 || ($hour === 7 && $minute > 30)) {
                     $status = 'late';
                 }
             } else { // Evening
-                if ($hour > 19 || ($hour === 19 && $minute > 0)) {
+                if ($hour > 19 || ($hour === 19 && $minute > 30)) {
                     $status = 'late';
                 }
             }
@@ -1014,16 +1157,26 @@ class OfficeController extends Controller
      */
     public function attendances(Request $request)
     {
-        $query = Attendance::with('worker', 'worksite', 'subSite')->latest('marked_at');
+        $query = Attendance::with('worker', 'worksite', 'hospital', 'subSite')->latest('marked_at');
 
         if ($request->filled('worksite_id')) {
             $query->where('worksite_id', $request->worksite_id);
+        }
+        if ($request->filled('hospital_id')) {
+            $query->where('hospital_id', $request->hospital_id);
         }
         if ($request->filled('sub_site_id')) {
             $query->where('sub_site_id', $request->sub_site_id);
         }
         if ($request->filled('date')) {
             $query->whereDate('date', $request->date);
+        }
+        if ($request->filled('month')) {
+            $parts = explode('-', $request->month);
+            if (count($parts) === 2) {
+                $query->whereYear('date', $parts[0])
+                      ->whereMonth('date', $parts[1]);
+            }
         }
         if ($request->filled('shift')) {
             $query->where('shift', $request->shift);
@@ -1035,7 +1188,6 @@ class OfficeController extends Controller
         // ── Absent-worker generation ───────────────────────────────────────────
         if (
             $request->boolean('include_absents')
-            && $request->filled('worksite_id')
             && $request->filled('date')
             && $request->filled('shift')
         ) {
@@ -1064,16 +1216,20 @@ class OfficeController extends Controller
                 // Workers assigned to the main worksite who have NOT marked IN
                 $markedIds = $realRecords->pluck('worker_id')->unique()->toArray();
 
-                $absentWorkers = \App\Models\Worker::where('assigned_worksite_id', $wsId)
-                    ->where('status', 'active')
-                    ->whereNotIn('id', $markedIds)
-                    ->get();
+                $absentQuery = \App\Models\Worker::where('status', 'active')
+                    ->whereNotIn('id', $markedIds);
+                
+                if ($request->filled('worksite_id')) {
+                    $absentQuery->where('assigned_worksite_id', $request->input('worksite_id'));
+                }
+
+                $absentWorkers = $absentQuery->get();
 
                 foreach ($absentWorkers as $worker) {
                     $allRecords[] = [
                         'id'           => 'absent_' . $worker->id,
                         'worker_id'    => $worker->id,
-                        'worksite_id'  => $wsId,
+                        'worksite_id'  => $worker->assigned_worksite_id,
                         'sub_site_id'  => null,
                         'shift'        => $shift,
                         'date'         => $date . 'T00:00:00.000000Z',
@@ -1091,6 +1247,10 @@ class OfficeController extends Controller
             return Response::json(['data' => $allRecords, 'total' => count($allRecords)]);
         }
         // ─────────────────────────────────────────────────────────────────────
+
+        if ($request->boolean('all')) {
+            return Response::json(['data' => $query->get()]);
+        }
 
         return Response::json($query->paginate(50));
     }
@@ -1141,5 +1301,177 @@ class OfficeController extends Controller
         $report->save();
 
         return Response::json(['success' => true, 'report' => $report], 201);
+    }
+
+    // Bid Bonds
+    public function bidBonds()
+    {
+        return Response::json(BidBond::orderBy('id', 'desc')->get());
+    }
+
+    public function createBidBond(Request $request)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
+            'tender_status' => 'nullable|string',
+            'duration_date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'is_awarded' => 'nullable|boolean',
+        ]);
+        $bond = BidBond::create($payload);
+        return Response::json($bond, 201);
+    }
+
+    public function updateBidBond(Request $request, BidBond $bidBond)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
+            'tender_status' => 'nullable|string',
+            'duration_date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'is_awarded' => 'nullable|boolean',
+        ]);
+        $bidBond->update($payload);
+        return Response::json($bidBond);
+    }
+
+    public function deleteBidBond(BidBond $bidBond)
+    {
+        $bidBond->delete();
+        return Response::json(['message' => 'Deleted successfully']);
+    }
+
+    // Performance Bonds
+    public function performanceBonds()
+    {
+        return Response::json(PerformanceBond::orderBy('id', 'desc')->get());
+    }
+
+    public function createPerformanceBond(Request $request)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
+            'date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'tender_status' => 'nullable|string',
+        ]);
+        $bond = PerformanceBond::create($payload);
+        return Response::json($bond, 201);
+    }
+
+    public function updatePerformanceBond(Request $request, PerformanceBond $performanceBond)
+    {
+        $payload = $request->validate([
+            'valid_period' => 'nullable|string',
+            'bond_name' => 'nullable|string',
+            'bond_number' => 'nullable|string',
+            'date' => 'nullable|string',
+            'description' => 'nullable|string',
+            'amount' => 'nullable|numeric',
+            'tender_status' => 'nullable|string',
+        ]);
+        $performanceBond->update($payload);
+        return Response::json($performanceBond);
+    }
+
+    public function deletePerformanceBond(PerformanceBond $performanceBond)
+    {
+        $performanceBond->delete();
+        return Response::json(['message' => 'Deleted successfully']);
+    }
+
+    // ── Cash In Hand Entries ─────────────────────────────────────────────────
+
+    public function cashInHandEntries()
+    {
+        return Response::json(['data' => CashInHandEntry::orderBy('date', 'asc')->get()]);
+    }
+
+    public function createCashInHandEntry(Request $request)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $entry = CashInHandEntry::create($payload);
+        return Response::json(['data' => $entry], 201);
+    }
+
+    public function updateCashInHandEntry(Request $request, CashInHandEntry $cashInHandEntry)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $cashInHandEntry->update($payload);
+        return Response::json(['data' => $cashInHandEntry->refresh()]);
+    }
+
+    public function deleteCashInHandEntry(CashInHandEntry $cashInHandEntry)
+    {
+        $cashInHandEntry->delete();
+        return Response::json(['deleted' => true]);
+    }
+
+    // ── Bank Entries ─────────────────────────────────────────────────────────
+
+    public function bankEntries()
+    {
+        return Response::json(['data' => BankEntry::orderBy('date', 'asc')->get()]);
+    }
+
+    public function createBankEntry(Request $request)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $entry = BankEntry::create($payload);
+        return Response::json(['data' => $entry], 201);
+    }
+
+    public function updateBankEntry(Request $request, BankEntry $bankEntry)
+    {
+        $payload = $request->validate([
+            'date'        => 'required|date',
+            'cheque_no'   => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'debit'       => 'nullable|numeric|min:0',
+            'credit'      => 'nullable|numeric|min:0',
+            'balance'     => 'required|numeric',
+        ]);
+
+        $bankEntry->update($payload);
+        return Response::json(['data' => $bankEntry->refresh()]);
+    }
+
+    public function deleteBankEntry(BankEntry $bankEntry)
+    {
+        $bankEntry->delete();
+        return Response::json(['deleted' => true]);
     }
 }

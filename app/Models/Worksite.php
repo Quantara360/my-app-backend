@@ -13,6 +13,9 @@ class Worksite extends Model
         'name',
         'description',
         'supervisor_id',
+        'parent_id',
+        'type',
+        'logo',
     ];
 
     public function hospitals()
