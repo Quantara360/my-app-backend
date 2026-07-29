@@ -289,11 +289,9 @@ class OfficeController extends Controller
             } else {
                 $query->whereNull('worksite_id');
             }
-            $query->where('created_at', '>=', now()->subHours(24));
         } else {
             $query = SubSiteImage::where('worksite_id', $request->query('worksite_id'))
-                                 ->whereNull('sub_site_id')
-                                 ->where('created_at', '>=', now()->subHours(24));
+                                 ->whereNull('sub_site_id');
         }
 
         if ($request->has('book_id')) {
@@ -321,17 +319,21 @@ class OfficeController extends Controller
             return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
         }
 
-        // Count active images for this exact scope
-        $countQuery = SubSiteImage::where('book_id', $bookId)
-                                  ->where('created_at', '>=', now()->subHours(24));
+        // Count total images for this exact scope (per book, not per 24h window)
+        $countQuery = SubSiteImage::where('book_id', $bookId);
         if ($subSiteId) {
-            $countQuery->where('sub_site_id', $subSiteId)->whereNull('worksite_id');
+            $countQuery->where('sub_site_id', $subSiteId);
+            if ($worksiteId) {
+                $countQuery->where('worksite_id', $worksiteId);
+            } else {
+                $countQuery->whereNull('worksite_id');
+            }
         } else {
             $countQuery->where('worksite_id', $worksiteId)->whereNull('sub_site_id');
         }
 
         if ($countQuery->count() >= 10) {
-            return Response::json(['error' => 'Maximum limit of 10 images reached for this book within the last 24 hours.'], 422);
+            return Response::json(['error' => 'Maximum limit of 10 images reached for this book.'], 422);
         }
 
         $scopeFolder = $subSiteId ? "sub_{$subSiteId}" : "worksite_{$worksiteId}";
