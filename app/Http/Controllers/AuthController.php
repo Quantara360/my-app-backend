@@ -64,9 +64,12 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        // Rate limit failed login attempts: 5 attempts per 15 minutes
+        // Rate limit failed login attempts: 5 attempts per 15 minutes.
+        // NOTE: tooManyAttempts() only takes ($key, $maxAttempts) - the decay
+        // window is set by hit()'s $decaySeconds, which must be in SECONDS
+        // (this used to pass 15, i.e. a 15-SECOND lockout, not 15 minutes).
         $throttleKey = 'login-attempts:' . $request->getClientIp();
-        if (RateLimiter::tooManyAttempts($throttleKey, 5, 15)) {
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             return Response::json([
                 'message' => 'Too many login attempts. Please try again later.'
             ], 429);
@@ -75,7 +78,7 @@ class AuthController extends Controller
         $user = User::where('username', $data['username'])->first();
 
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            RateLimiter::hit($throttleKey, 15);
+            RateLimiter::hit($throttleKey, 15 * 60);
             return Response::json(['message' => 'Invalid credentials'], 401);
         }
 

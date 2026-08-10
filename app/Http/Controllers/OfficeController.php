@@ -947,7 +947,10 @@ class OfficeController extends Controller
 
     public function __construct()
     {
-        $this->faceServiceUrl = env('FACE_SERVICE_URL', 'http://ai:5050');
+        // config(), not env() directly - env() outside config/*.php returns
+        // null once config is cached (php artisan config:cache), which would
+        // silently break face recognition in production.
+        $this->faceServiceUrl = config('services.face_service.url');
     }
 
     /**
@@ -973,8 +976,12 @@ class OfficeController extends Controller
         $dataUri  = "data:image/{$ext};base64,{$base64}";
 
         // Register face with Python service
+        // NOTE: CPU-only ArcFace/MTCNN inference on this machine measured
+        // ~17s per call even warm - 30s left almost no headroom before a
+        // slightly larger photo or a queued request (Flask dev server is
+        // single-threaded) tipped it into a client-side timeout.
         try {
-            $fsResponse = Http::timeout(30)->post("{$this->faceServiceUrl}/register", [
+            $fsResponse = Http::timeout(60)->post("{$this->faceServiceUrl}/register", [
                 'worker_id'    => $worker->id,
                 'worker_name'  => $worker->name,
                 'image_base64' => $dataUri,
@@ -1020,7 +1027,7 @@ class OfficeController extends Controller
         ]);
 
         try {
-            $fsResponse = Http::timeout(30)->post("{$this->faceServiceUrl}/recognize", [
+            $fsResponse = Http::timeout(60)->post("{$this->faceServiceUrl}/recognize", [
                 'image_base64' => $request->input('image_base64'),
             ]);
 
@@ -1052,8 +1059,8 @@ class OfficeController extends Controller
             $request->merge(['state' => strtoupper($request->input('state'))]);
         }
 
-        // Debug: log incoming data
-        \Log::info('[markAttendance] incoming', $request->all());
+        // Debug: log incoming data (debug level so it doesn't spam production logs)
+        \Log::debug('[markAttendance] incoming', $request->all());
 
         try {
             $payload = $request->validate([
@@ -1124,7 +1131,22 @@ class OfficeController extends Controller
             $payload['status']    = $status;
             $payload['method']    = $payload['method'] ?? 'face';
 
-            $attendance = Attendance::create($payload);
+            try {
+                $attendance = Attendance::create($payload);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Unique (worker_id, date, shift) constraint - two concurrent/
+                // retried "mark IN" taps (e.g. a client that retried after a
+                // slow response) raced past the $existing check above. The DB
+                // already rejected the duplicate; surface the same friendly
+                // message the normal check gives instead of a raw 500.
+                if ((string) $e->getCode() === '23000') {
+                    return Response::json([
+                        'success' => false,
+                        'error'   => "IN attendance already marked for the {$payload['shift']} shift."
+                    ], 409);
+                }
+                throw $e;
+            }
 
             return Response::json([
                 'success'    => true,
