@@ -993,7 +993,7 @@ class OfficeController extends Controller
                     'error'   => 'Face service error: ' . $fsResponse->body(),
                 ], 422);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return Response::json([
                 'success' => false,
                 'error'   => 'Face service unavailable: ' . $e->getMessage(),
@@ -1031,8 +1031,21 @@ class OfficeController extends Controller
                 'image_base64' => $request->input('image_base64'),
             ]);
 
-            return Response::json($fsResponse->json(), $fsResponse->status());
-        } catch (\Exception $e) {
+            // $fsResponse->json() is null when the AI service's body wasn't
+            // valid JSON (e.g. a proxy error page) - fall back to a
+            // {success,error} shape so the frontend never has to guess.
+            $body = $fsResponse->json();
+            if ($body === null) {
+                return Response::json([
+                    'success' => false,
+                    'error'   => "Face service returned an unexpected response (HTTP {$fsResponse->status()})",
+                ], 502);
+            }
+            return Response::json($body, $fsResponse->status());
+        } catch (\Throwable $e) {
+            // \Throwable (not \Exception) so a TypeError/Error from a bad
+            // config or malformed response also produces a proper JSON body
+            // instead of falling through to the framework's generic handler.
             return Response::json([
                 'success' => false,
                 'error'   => 'Face service unavailable: ' . $e->getMessage(),

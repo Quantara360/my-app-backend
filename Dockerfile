@@ -5,6 +5,16 @@ RUN apt-get update && apt-get install -y \
 
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
+# Default post_max_size (8M) is smaller than the face-recognition image_base64
+# payload the AI service is built to accept (up to 15MB decoded, ~20MB as
+# base64 + JSON). Without this, a larger phone photo gets silently dropped by
+# PHP before Laravel ever sees it - image_base64 validation then fails with
+# Laravel's generic {"message": ...} shape instead of a useful error.
+RUN { \
+        echo 'post_max_size=20M'; \
+        echo 'upload_max_filesize=20M'; \
+    } > /usr/local/etc/php/conf.d/uploads.ini
+
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
