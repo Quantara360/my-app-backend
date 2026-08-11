@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'face_service' => [
+        'url' => env('FACE_SERVICE_URL', 'http://ai:5050'),
+    ],
+
 ];
