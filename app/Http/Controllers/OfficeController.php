@@ -1485,4 +1485,30 @@ class OfficeController extends Controller
         $bankEntry->delete();
         return Response::json(['deleted' => true]);
     }
+
+    // — Ledger Settings ─────────────────────────────
+
+    public function getLedgerSetting(string $type)
+    {
+        $setting = \App\Models\LedgerSetting::where('ledger_type', $type)->first();
+        return Response::json(['data' => [
+            'manual_prev_balance' => $setting?->manual_prev_balance,
+        ]]);
+    }
+
+    public function updateLedgerSetting(Request $request, string $type)
+    {
+        $payload = $request->validate([
+            'manual_prev_balance' => 'required|numeric',
+        ]);
+
+        $setting = \App\Models\LedgerSetting::updateOrCreate(
+            ['ledger_type' => $type],
+            ['manual_prev_balance' => $payload['manual_prev_balance']]
+        );
+
+        return Response::json(['data' => [
+            'manual_prev_balance' => $setting->manual_prev_balance,
+        ]]);
+    }
 }

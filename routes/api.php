@@ -142,5 +142,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('bank-entries', [OfficeController::class, 'createBankEntry']);
     Route::put('bank-entries/{bankEntry}', [OfficeController::class, 'updateBankEntry']);
     Route::delete('bank-entries/{bankEntry}', [OfficeController::class, 'deleteBankEntry']);
+// Accounts — Ledger Settings
+Route::get('ledger-settings/{type}', [OfficeController::class, 'getLedgerSetting']);
+Route::put('ledger-settings/{type}', [OfficeController::class, 'updateLedgerSetting']);
+
 });
 
