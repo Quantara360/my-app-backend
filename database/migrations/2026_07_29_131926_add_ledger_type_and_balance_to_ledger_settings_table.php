@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+
         // Fresh installs already get these columns from create_ledger_settings_table;
         // this migration only needs to backfill them on databases created before that.
         Schema::table('ledger_settings', function (Blueprint $table) {
