@@ -1163,7 +1163,7 @@ class OfficeController extends Controller
 
             return Response::json([
                 'success'    => true,
-                'attendance' => $attendance->load('worker', 'worksite', 'subSite'),
+                'attendance' => $attendance->load('worker', 'worksite', 'hospital', 'subSite'),
             ], 201);
         } else { // OUT
             if (!$existing) {
@@ -1188,7 +1188,7 @@ class OfficeController extends Controller
 
             return Response::json([
                 'success'    => true,
-                'attendance' => $existing->load('worker', 'worksite'),
+                'attendance' => $existing->load('worker', 'worksite', 'hospital', 'subSite'),
             ], 200);
         }
     }
