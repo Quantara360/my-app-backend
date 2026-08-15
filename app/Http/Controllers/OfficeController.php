@@ -1306,8 +1306,17 @@ class OfficeController extends Controller
      *
      * DELETE /attendances/{attendance}
      */
-    public function deleteAttendance(Attendance $attendance)
+    public function deleteAttendance(Request $request, Attendance $attendance)
     {
+        // Supervisors mark attendance but must not be able to delete records
+        // (office/admin only). Enforced here, not just by hiding the button
+        // client-side, since the route itself would otherwise still accept
+        // a direct API call from a supervisor's token.
+        $user = $request->user();
+        if ($user && $user->role === 'supervisor') {
+            return Response::json(['message' => 'Not authorized to delete attendance records'], 403);
+        }
+
         $attendance->delete();
         return Response::json(['success' => true]);
     }
