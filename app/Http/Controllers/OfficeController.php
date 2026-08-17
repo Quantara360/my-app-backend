@@ -319,8 +319,14 @@ class OfficeController extends Controller
             return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
         }
 
-        // Count total images for this exact scope (per book, not per 24h window)
-        $countQuery = SubSiteImage::where('book_id', $bookId);
+        // Count images for this exact scope from the last 24 hours only - the
+        // frontend's own error message already promised "per book within the
+        // last 24 hours", but this was actually a lifetime cap with no time
+        // window, so a book with 10 images ever uploaded (even years old)
+        // would silently block all future uploads forever. Matches the
+        // preview grid below, which is now also scoped to the last 24 hours.
+        $countQuery = SubSiteImage::where('book_id', $bookId)
+            ->where('created_at', '>=', now()->subDay());
         if ($subSiteId) {
             $countQuery->where('sub_site_id', $subSiteId);
             if ($worksiteId) {
@@ -333,7 +339,7 @@ class OfficeController extends Controller
         }
 
         if ($countQuery->count() >= 10) {
-            return Response::json(['error' => 'Maximum limit of 10 images reached for this book.'], 422);
+            return Response::json(['error' => 'Maximum limit of 10 images reached for this book within the last 24 hours.'], 422);
         }
 
         $scopeFolder = $subSiteId ? "sub_{$subSiteId}" : "worksite_{$worksiteId}";
