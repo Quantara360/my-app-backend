@@ -16,6 +16,7 @@ class CashInHandEntry extends Model
         'debit',
         'credit',
         'balance',
+        'linked_transfer_id',
     ];
 
     protected $casts = [
