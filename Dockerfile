@@ -23,5 +23,13 @@ COPY . .
 RUN composer install --no-dev --optimize-autoloader
 RUN cp .env.example .env && php artisan key:generate
 
+# public/storage is a symlink to storage/app/public (where uploaded photos,
+# worksite logos, etc. actually live). It's gitignored, so a fresh image
+# build never has it, and every rebuild of this container was silently
+# losing it - any previously-working image URL then 404s until someone
+# manually re-runs `storage:link` inside the container. Baking it into the
+# image here means it survives every rebuild automatically.
+RUN php artisan storage:link
+
 EXPOSE 8000
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
