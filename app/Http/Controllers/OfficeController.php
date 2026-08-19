@@ -285,9 +285,15 @@ class OfficeController extends Controller
         if ($hasSubSite) {
             $query = SubSiteImage::where('sub_site_id', $request->query('sub_site_id'));
             // Also scope by worksite_id if provided — prevents collision when
-            // sub-sites of different worksites share the same numeric sub_site_id
+            // sub-sites of different worksites share the same numeric sub_site_id.
+            // Images uploaded before the worksite_id column existed have it
+            // stored as NULL, so also match those instead of hiding them
+            // forever from the modern (always-scoped) query the apps send.
             if ($request->has('worksite_id') && $request->query('worksite_id') !== null) {
-                $query->where('worksite_id', $request->query('worksite_id'));
+                $worksiteId = $request->query('worksite_id');
+                $query->where(function ($q) use ($worksiteId) {
+                    $q->where('worksite_id', $worksiteId)->orWhereNull('worksite_id');
+                });
             } else {
                 $query->whereNull('worksite_id');
             }
@@ -300,7 +306,16 @@ class OfficeController extends Controller
             $query->where('book_id', $request->query('book_id'));
         }
 
-        return Response::json($query->latest()->get());
+        // mine=1 — used by the supervisor's own capture/preview screens so
+        // each supervisor only sees (and counts toward the 10-image cap)
+        // their own photos, not every supervisor's uploads for the same
+        // book/site. Office staff browsing books.tsx never sends this, so
+        // they continue to see every supervisor's images together.
+        if ($request->boolean('mine')) {
+            $query->where('uploaded_by', $request->user()->id);
+        }
+
+        return Response::json($query->with('uploadedBy:id,name')->latest()->get());
     }
 
     public function uploadBookImage(Request $request)
@@ -316,18 +331,21 @@ class OfficeController extends Controller
         $subSiteId  = $request->input('sub_site_id');
         $worksiteId = $request->input('worksite_id');
         $bookId     = $request->input('book_id');
+        $userId     = $request->user()->id;
 
         if (!$subSiteId && !$worksiteId) {
             return Response::json(['error' => 'Either sub_site_id or worksite_id is required.'], 422);
         }
 
-        // Count images for this exact scope from the last 24 hours only - the
-        // frontend's own error message already promised "per book within the
-        // last 24 hours", but this was actually a lifetime cap with no time
-        // window, so a book with 10 images ever uploaded (even years old)
-        // would silently block all future uploads forever. Matches the
-        // preview grid below, which is now also scoped to the last 24 hours.
+        // Count images for this exact scope, from this same supervisor only,
+        // in the last 24 hours - the frontend's own error message already
+        // promised "per book within the last 24 hours", but this was
+        // actually a lifetime cap with no time window and shared across
+        // every supervisor, so one supervisor could exhaust the quota for
+        // everyone else uploading to the same book/site. Matches the
+        // preview grid below, which is now also scoped to the current user.
         $countQuery = SubSiteImage::where('book_id', $bookId)
+            ->where('uploaded_by', $userId)
             ->where('created_at', '>=', now()->subDay());
         if ($subSiteId) {
             $countQuery->where('sub_site_id', $subSiteId);
@@ -354,8 +372,10 @@ class OfficeController extends Controller
             // happen to share the same numeric sub_site_id
             'worksite_id' => $worksiteId ?: null,
             'book_id'     => $bookId,
+            'uploaded_by' => $userId,
             'image_path'  => $path,
         ]);
+        $image->load('uploadedBy:id,name');
 
         return Response::json($image, 201);
     }
