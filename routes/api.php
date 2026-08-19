@@ -142,6 +142,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('bank-entries', [OfficeController::class, 'createBankEntry']);
     Route::put('bank-entries/{bankEntry}', [OfficeController::class, 'updateBankEntry']);
     Route::delete('bank-entries/{bankEntry}', [OfficeController::class, 'deleteBankEntry']);
+
+    // Accounts — Bank <-> Cash in Hand transfer (creates one linked entry in each)
+    Route::post('account-transfers', [OfficeController::class, 'createAccountTransfer']);
 // Accounts — Ledger Settings
 Route::get('ledger-settings/{type}', [OfficeController::class, 'getLedgerSetting']);
 Route::put('ledger-settings/{type}', [OfficeController::class, 'updateLedgerSetting']);

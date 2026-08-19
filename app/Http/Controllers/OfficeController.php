@@ -25,9 +25,11 @@ use App\Models\PerformanceBond;
 use App\Models\CashInHandEntry;
 use App\Models\BankEntry;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class OfficeController extends Controller
 {
@@ -1483,14 +1485,46 @@ class OfficeController extends Controller
             'balance'     => 'required|numeric',
         ]);
 
-        $cashInHandEntry->update($payload);
-        return Response::json(['data' => $cashInHandEntry->refresh()]);
+        return DB::transaction(function () use ($payload, $cashInHandEntry) {
+            $cashInHandEntry->update($payload);
+
+            // Bank<->Cash transfer: keep the linked leg's date/amount/cheque_no
+            // in sync so both ledgers still reconcile to the same transaction.
+            // Description is intentionally NOT synced - each leg legitimately
+            // reads differently (e.g. "Cash Withdrawal" vs "Cash Received from
+            // Bank" for the same transfer). The linked row's own `balance`
+            // column is left as-is - it's not what that ledger's page actually
+            // displays (both cash-in-hand.tsx and bank.tsx recompute the
+            // running balance live from debit/credit on every load), it only
+            // matters as a lookup for a past month's closing balance, which
+            // this doesn't retroactively fix.
+            if ($cashInHandEntry->linked_transfer_id) {
+                $linkedBank = BankEntry::where('linked_transfer_id', $cashInHandEntry->linked_transfer_id)->first();
+                if ($linkedBank) {
+                    $linkedBank->update([
+                        'date'      => $payload['date'],
+                        'cheque_no' => $payload['cheque_no'] ?? null,
+                        // The linked leg is always the opposite side of
+                        // whatever this leg just became.
+                        'debit'     => $cashInHandEntry->credit,
+                        'credit'    => $cashInHandEntry->debit,
+                    ]);
+                }
+            }
+
+            return Response::json(['data' => $cashInHandEntry->refresh()]);
+        });
     }
 
     public function deleteCashInHandEntry(CashInHandEntry $cashInHandEntry)
     {
-        $cashInHandEntry->delete();
-        return Response::json(['deleted' => true]);
+        return DB::transaction(function () use ($cashInHandEntry) {
+            if ($cashInHandEntry->linked_transfer_id) {
+                BankEntry::where('linked_transfer_id', $cashInHandEntry->linked_transfer_id)->delete();
+            }
+            $cashInHandEntry->delete();
+            return Response::json(['deleted' => true]);
+        });
     }
 
     // ── Bank Entries ─────────────────────────────────────────────────────────
@@ -1526,14 +1560,107 @@ class OfficeController extends Controller
             'balance'     => 'required|numeric',
         ]);
 
-        $bankEntry->update($payload);
-        return Response::json(['data' => $bankEntry->refresh()]);
+        return DB::transaction(function () use ($payload, $bankEntry) {
+            $bankEntry->update($payload);
+
+            // See the matching comment in updateCashInHandEntry - same
+            // Bank<->Cash transfer sync, mirrored.
+            if ($bankEntry->linked_transfer_id) {
+                $linkedCash = CashInHandEntry::where('linked_transfer_id', $bankEntry->linked_transfer_id)->first();
+                if ($linkedCash) {
+                    $linkedCash->update([
+                        'date'      => $payload['date'],
+                        'cheque_no' => $payload['cheque_no'] ?? null,
+                        'debit'     => $bankEntry->credit,
+                        'credit'    => $bankEntry->debit,
+                    ]);
+                }
+            }
+
+            return Response::json(['data' => $bankEntry->refresh()]);
+        });
     }
 
     public function deleteBankEntry(BankEntry $bankEntry)
     {
-        $bankEntry->delete();
-        return Response::json(['deleted' => true]);
+        return DB::transaction(function () use ($bankEntry) {
+            if ($bankEntry->linked_transfer_id) {
+                CashInHandEntry::where('linked_transfer_id', $bankEntry->linked_transfer_id)->delete();
+            }
+            $bankEntry->delete();
+            return Response::json(['deleted' => true]);
+        });
+    }
+
+    // ── Bank <-> Cash in Hand Transfer ───────────────────────────────────────
+    // A single logical transaction that creates one CashInHandEntry and one
+    // BankEntry atomically, linked by a shared UUID (see the migration
+    // add_linked_transfer_id_to_ledger_entries). Direction determines which
+    // side is the Credit leg (the ledger receiving money) and which is the
+    // Debit leg (the ledger losing money) - both grids use the same
+    // Balance = Previous + Credit - Debit formula.
+    public function createAccountTransfer(Request $request)
+    {
+        $payload = $request->validate([
+            'direction'        => 'required|in:bank_to_cash,cash_to_bank',
+            'date'             => 'required|date',
+            'cheque_no'        => 'nullable|string|max:255',
+            'amount'           => 'required|numeric|min:0.01',
+            'cash_description' => 'nullable|string',
+            // Optional: the page initiating the transfer only has its own
+            // ledger's entries loaded (Cash's page doesn't have Bank's data
+            // and vice versa) - whichever side is omitted gets computed here
+            // instead of forcing the frontend to fetch the other ledger
+            // just to open this modal.
+            'cash_balance'     => 'nullable|numeric',
+            'bank_description' => 'nullable|string',
+            'bank_balance'     => 'nullable|numeric',
+        ]);
+
+        // bank_to_cash (withdrawal): cash gains the money -> Credit; bank
+        // loses it -> Debit. cash_to_bank (deposit): the reverse.
+        $cashIsCredit = $payload['direction'] === 'bank_to_cash';
+        $bankIsCredit = $payload['direction'] === 'cash_to_bank';
+        $cashDebit  = $cashIsCredit ? null : $payload['amount'];
+        $cashCredit = $cashIsCredit ? $payload['amount'] : null;
+        $bankDebit  = $bankIsCredit ? null : $payload['amount'];
+        $bankCredit = $bankIsCredit ? $payload['amount'] : null;
+        $linkedTransferId = (string) Str::uuid();
+
+        $cashBalance = $payload['cash_balance'] ?? $this->nextLedgerBalance(CashInHandEntry::class, $cashCredit, $cashDebit);
+        $bankBalance = $payload['bank_balance'] ?? $this->nextLedgerBalance(BankEntry::class, $bankCredit, $bankDebit);
+
+        return DB::transaction(function () use ($payload, $cashDebit, $cashCredit, $bankDebit, $bankCredit, $cashBalance, $bankBalance, $linkedTransferId) {
+            $cashEntry = CashInHandEntry::create([
+                'date'                => $payload['date'],
+                'cheque_no'           => $payload['cheque_no'] ?? null,
+                'description'         => $payload['cash_description'] ?? null,
+                'debit'               => $cashDebit,
+                'credit'              => $cashCredit,
+                'balance'             => $cashBalance,
+                'linked_transfer_id'  => $linkedTransferId,
+            ]);
+
+            $bankEntry = BankEntry::create([
+                'date'                => $payload['date'],
+                'cheque_no'           => $payload['cheque_no'] ?? null,
+                'description'         => $payload['bank_description'] ?? null,
+                'debit'               => $bankDebit,
+                'credit'              => $bankCredit,
+                'balance'             => $bankBalance,
+                'linked_transfer_id'  => $linkedTransferId,
+            ]);
+
+            return Response::json(['data' => ['cash' => $cashEntry, 'bank' => $bankEntry]], 201);
+        });
+    }
+
+    /** Previous balance = the most recent existing entry's stored balance (0 if none), then + Credit - Debit. */
+    private function nextLedgerBalance(string $modelClass, ?float $credit, ?float $debit): float
+    {
+        $latest = $modelClass::orderBy('date', 'desc')->orderBy('id', 'desc')->first();
+        $prev = $latest ? (float) $latest->balance : 0.0;
+        return $prev + ($credit ?? 0) - ($debit ?? 0);
     }
 
     // — Ledger Settings ─────────────────────────────
