@@ -23,15 +23,16 @@ class Hospital extends Model
         'night_early_grace_minutes',
     ];
 
-    // Times are stored as MySQL TIME columns (e.g. "07:00:00") - cast to a
-    // plain "H:i" string so the frontend gets "07:00" instead of Carbon's
-    // default datetime serialization of a bare TIME value.
-    protected $casts = [
-        'day_shift_start'   => 'datetime:H:i',
-        'day_shift_end'     => 'datetime:H:i',
-        'night_shift_start' => 'datetime:H:i',
-        'night_shift_end'   => 'datetime:H:i',
-    ];
+    // Deliberately NOT cast to 'datetime' - a datetime:H:i cast returns a
+    // Carbon instance from getAttribute(), which only gets formatted to
+    // "H:i" by Eloquent's own toArray()/toJson() on the model itself. Any
+    // other route (only(), a plain array built manually and passed to
+    // json_encode/Response::json, string interpolation, etc.) sees Carbon's
+    // own default __toString()/jsonSerialize() instead - a full ISO
+    // datetime, not "H:i" - which is exactly the shape OfficeController
+    // reads these in. Left uncast, these MySQL TIME columns come back as
+    // plain "H:i:s" strings from the DB driver with no cast surprises;
+    // resolveShiftConfig() truncates to "H:i" itself.
 
     public function worksite()
     {

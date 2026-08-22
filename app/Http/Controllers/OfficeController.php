@@ -228,6 +228,31 @@ class OfficeController extends Controller
     ];
 
     /**
+     * MySQL TIME columns come back from the DB driver as plain "H:i:s"
+     * strings (Hospital deliberately has no cast on these - see the model),
+     * so this only needs to truncate the seconds off, or pass null through.
+     */
+    private function formatShiftTime(?string $value): ?string
+    {
+        return $value === null ? null : substr($value, 0, 5);
+    }
+
+    /** Raw (possibly-null) override values - lets the admin panel show which fields are customized vs. inherited. */
+    private function hospitalShiftOverrides(Hospital $hospital): array
+    {
+        return [
+            'day_shift_start'           => $this->formatShiftTime($hospital->day_shift_start),
+            'day_shift_end'             => $this->formatShiftTime($hospital->day_shift_end),
+            'day_late_grace_minutes'    => $hospital->day_late_grace_minutes,
+            'day_early_grace_minutes'   => $hospital->day_early_grace_minutes,
+            'night_shift_start'         => $this->formatShiftTime($hospital->night_shift_start),
+            'night_shift_end'           => $this->formatShiftTime($hospital->night_shift_end),
+            'night_late_grace_minutes'  => $hospital->night_late_grace_minutes,
+            'night_early_grace_minutes' => $hospital->night_early_grace_minutes,
+        ];
+    }
+
+    /**
      * Merge a hospital's own shift settings over the defaults - any column
      * left null on the hospital keeps the default for that one field.
      */
@@ -238,14 +263,10 @@ class OfficeController extends Controller
             return $config;
         }
 
-        foreach (['day_shift_start', 'day_shift_end', 'night_shift_start', 'night_shift_end'] as $key) {
-            if ($hospital->$key !== null) {
-                $config[$key] = $hospital->$key; // cast to "H:i" on the model
-            }
-        }
-        foreach (['day_late_grace_minutes', 'day_early_grace_minutes', 'night_late_grace_minutes', 'night_early_grace_minutes'] as $key) {
-            if ($hospital->$key !== null) {
-                $config[$key] = (int) $hospital->$key;
+        $overrides = $this->hospitalShiftOverrides($hospital);
+        foreach ($config as $key => $default) {
+            if ($overrides[$key] !== null) {
+                $config[$key] = $overrides[$key];
             }
         }
         return $config;
@@ -257,18 +278,7 @@ class OfficeController extends Controller
             'hospital_id' => $hospital->id,
             'defaults'    => self::DEFAULT_SHIFT_CONFIG,
             'effective'   => $this->resolveShiftConfig($hospital),
-            // Raw (possibly-null) values - the admin panel uses these to show
-            // which fields are actually customized vs. inherited from defaults.
-            'overrides'   => [
-                'day_shift_start'           => $hospital->day_shift_start,
-                'day_shift_end'             => $hospital->day_shift_end,
-                'day_late_grace_minutes'    => $hospital->day_late_grace_minutes,
-                'day_early_grace_minutes'   => $hospital->day_early_grace_minutes,
-                'night_shift_start'         => $hospital->night_shift_start,
-                'night_shift_end'           => $hospital->night_shift_end,
-                'night_late_grace_minutes'  => $hospital->night_late_grace_minutes,
-                'night_early_grace_minutes' => $hospital->night_early_grace_minutes,
-            ],
+            'overrides'   => $this->hospitalShiftOverrides($hospital),
         ]);
     }
 
@@ -295,16 +305,7 @@ class OfficeController extends Controller
             'hospital_id' => $hospital->id,
             'defaults'    => self::DEFAULT_SHIFT_CONFIG,
             'effective'   => $this->resolveShiftConfig($hospital),
-            'overrides'   => [
-                'day_shift_start'           => $hospital->day_shift_start,
-                'day_shift_end'             => $hospital->day_shift_end,
-                'day_late_grace_minutes'    => $hospital->day_late_grace_minutes,
-                'day_early_grace_minutes'   => $hospital->day_early_grace_minutes,
-                'night_shift_start'         => $hospital->night_shift_start,
-                'night_shift_end'           => $hospital->night_shift_end,
-                'night_late_grace_minutes'  => $hospital->night_late_grace_minutes,
-                'night_early_grace_minutes' => $hospital->night_early_grace_minutes,
-            ],
+            'overrides'   => $this->hospitalShiftOverrides($hospital),
         ]);
     }
 
