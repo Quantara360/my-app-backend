@@ -210,6 +210,104 @@ class OfficeController extends Controller
         return Response::json(['message' => 'Deleted successfully']);
     }
 
+    // ─── Hospital Shift Configuration ──────────────────────────────────────────
+    // Each hospital can run its Day/Night shifts on its own start/end times and
+    // late/early grace periods. Any field left unset (null) falls back to
+    // DEFAULT_SHIFT_CONFIG below, which matches the original app-wide values
+    // this used to be hardcoded to - so a hospital nobody has configured yet
+    // behaves exactly as before.
+    private const DEFAULT_SHIFT_CONFIG = [
+        'day_shift_start'           => '07:00',
+        'day_shift_end'             => '19:00',
+        'day_late_grace_minutes'    => 30,
+        'day_early_grace_minutes'   => 120,
+        'night_shift_start'         => '19:00',
+        'night_shift_end'           => '07:00',
+        'night_late_grace_minutes'  => 30,
+        'night_early_grace_minutes' => 120,
+    ];
+
+    /**
+     * Merge a hospital's own shift settings over the defaults - any column
+     * left null on the hospital keeps the default for that one field.
+     */
+    private function resolveShiftConfig(?Hospital $hospital): array
+    {
+        $config = self::DEFAULT_SHIFT_CONFIG;
+        if (!$hospital) {
+            return $config;
+        }
+
+        foreach (['day_shift_start', 'day_shift_end', 'night_shift_start', 'night_shift_end'] as $key) {
+            if ($hospital->$key !== null) {
+                $config[$key] = $hospital->$key; // cast to "H:i" on the model
+            }
+        }
+        foreach (['day_late_grace_minutes', 'day_early_grace_minutes', 'night_late_grace_minutes', 'night_early_grace_minutes'] as $key) {
+            if ($hospital->$key !== null) {
+                $config[$key] = (int) $hospital->$key;
+            }
+        }
+        return $config;
+    }
+
+    public function getHospitalShifts(Hospital $hospital)
+    {
+        return Response::json([
+            'hospital_id' => $hospital->id,
+            'defaults'    => self::DEFAULT_SHIFT_CONFIG,
+            'effective'   => $this->resolveShiftConfig($hospital),
+            // Raw (possibly-null) values - the admin panel uses these to show
+            // which fields are actually customized vs. inherited from defaults.
+            'overrides'   => [
+                'day_shift_start'           => $hospital->day_shift_start,
+                'day_shift_end'             => $hospital->day_shift_end,
+                'day_late_grace_minutes'    => $hospital->day_late_grace_minutes,
+                'day_early_grace_minutes'   => $hospital->day_early_grace_minutes,
+                'night_shift_start'         => $hospital->night_shift_start,
+                'night_shift_end'           => $hospital->night_shift_end,
+                'night_late_grace_minutes'  => $hospital->night_late_grace_minutes,
+                'night_early_grace_minutes' => $hospital->night_early_grace_minutes,
+            ],
+        ]);
+    }
+
+    public function updateHospitalShifts(Request $request, Hospital $hospital)
+    {
+        // Every field is nullable and accepted even when explicitly null -
+        // sending null resets that one field back to the app-wide default,
+        // rather than requiring a separate "reset" action.
+        $payload = $request->validate([
+            'day_shift_start'           => 'nullable|date_format:H:i',
+            'day_shift_end'             => 'nullable|date_format:H:i',
+            'day_late_grace_minutes'    => 'nullable|integer|min:0|max:600',
+            'day_early_grace_minutes'   => 'nullable|integer|min:0|max:600',
+            'night_shift_start'         => 'nullable|date_format:H:i',
+            'night_shift_end'           => 'nullable|date_format:H:i',
+            'night_late_grace_minutes'  => 'nullable|integer|min:0|max:600',
+            'night_early_grace_minutes' => 'nullable|integer|min:0|max:600',
+        ]);
+
+        $hospital->update($payload);
+        $hospital->refresh();
+
+        return Response::json([
+            'hospital_id' => $hospital->id,
+            'defaults'    => self::DEFAULT_SHIFT_CONFIG,
+            'effective'   => $this->resolveShiftConfig($hospital),
+            'overrides'   => [
+                'day_shift_start'           => $hospital->day_shift_start,
+                'day_shift_end'             => $hospital->day_shift_end,
+                'day_late_grace_minutes'    => $hospital->day_late_grace_minutes,
+                'day_early_grace_minutes'   => $hospital->day_early_grace_minutes,
+                'night_shift_start'         => $hospital->night_shift_start,
+                'night_shift_end'           => $hospital->night_shift_end,
+                'night_late_grace_minutes'  => $hospital->night_late_grace_minutes,
+                'night_early_grace_minutes' => $hospital->night_early_grace_minutes,
+            ],
+        ]);
+    }
+
     // ─── Sub Sites ────────────────────────────────────────────────────────────
 
     public function subSites(Request $request)
@@ -1153,20 +1251,32 @@ class OfficeController extends Controller
                 ], 400);
             }
 
-            // Status Logic: Present if <= 7:30 AM/PM, Late if > 7:30 AM/PM
+            // Status Logic: present if within (shift start + late grace),
+            // late otherwise - using this worker's hospital's own configured
+            // shift times/grace when set, falling back to the app-wide
+            // defaults (7:00/19:00 start, 30 min grace) otherwise. See
+            // resolveShiftConfig().
             $status = 'present';
             $localTime = $now->copy()->timezone('Asia/Colombo');
             $hour = (int)$localTime->format('H');
             $minute = (int)$localTime->format('i');
+            $nowMinutes = $hour * 60 + $minute;
+
+            $hospitalForShift = !empty($payload['hospital_id']) ? Hospital::find($payload['hospital_id']) : null;
+            $shiftConfig = $this->resolveShiftConfig($hospitalForShift);
 
             if ($payload['shift'] === 'Morning') {
-                if ($hour > 7 || ($hour === 7 && $minute > 30)) {
-                    $status = 'late';
-                }
+                $startStr = $shiftConfig['day_shift_start'];
+                $graceMinutes = $shiftConfig['day_late_grace_minutes'];
             } else { // Evening
-                if ($hour > 19 || ($hour === 19 && $minute > 30)) {
-                    $status = 'late';
-                }
+                $startStr = $shiftConfig['night_shift_start'];
+                $graceMinutes = $shiftConfig['night_late_grace_minutes'];
+            }
+            [$startHour, $startMinute] = array_map('intval', explode(':', $startStr));
+            $startMinutes = $startHour * 60 + $startMinute;
+
+            if ($nowMinutes > $startMinutes + $graceMinutes) {
+                $status = 'late';
             }
             $payload['marked_at'] = $now;
             $payload['status']    = $status;

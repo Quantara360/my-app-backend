@@ -30,6 +30,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('hospitals/{hospital}', [OfficeController::class, 'updateHospital']);
     Route::delete('hospitals/{hospital}', [OfficeController::class, 'deleteHospital']);
 
+    // Hospital shift configuration (Day/Night start/end + late/early grace)
+    Route::get('hospitals/{hospital}/shifts', [OfficeController::class, 'getHospitalShifts']);
+    Route::put('hospitals/{hospital}/shifts', [OfficeController::class, 'updateHospitalShifts']);
+
     Route::get('sub-sites', [OfficeController::class, 'subSites']);
     Route::post('sub-sites', [OfficeController::class, 'createSubSite']);
     Route::put('sub-sites/{subSite}', [OfficeController::class, 'updateSubSite']);
