@@ -167,6 +167,50 @@ class AuthController extends Controller
     }
 
     /**
+     * Admin-only: list every user account, for the "reset a forgotten
+     * password" flow - there's no email-based self-service reset (the
+     * backend's mail is only set to MAIL_MAILER=log, not a real
+     * provider), so an admin picks the account and sets a new password
+     * directly instead. Explicit role check here rather than route
+     * middleware or trusting the frontend to hide the button - unlike
+     * most of this app's other endpoints (which have no backend role
+     * enforcement at all, only frontend-side hiding), a password-reset
+     * endpoint is exactly the kind of thing that must not be reachable
+     * by a non-admin who simply calls the API directly.
+     */
+    public function listUsers(Request $request)
+    {
+        if ($request->user()->role !== 'admin') {
+            return Response::json(['message' => 'Forbidden'], 403);
+        }
+
+        $users = User::orderBy('name')->get()->map(fn (User $u) => $this->formatUser($u));
+
+        return Response::json($users);
+    }
+
+    /**
+     * Admin-only: set a new password for any user, without knowing (or
+     * needing) their current one - the "forgot password" recovery path.
+     * See index() above for why this checks the role explicitly.
+     */
+    public function resetPassword(Request $request, User $user)
+    {
+        if ($request->user()->role !== 'admin') {
+            return Response::json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user->password = Hash::make($data['new_password']);
+        $user->save();
+
+        return Response::json(['message' => 'Password reset successfully.']);
+    }
+
+    /**
      * Format a user for API responses — always includes scope fields.
      */
     private function formatUser(\App\Models\User $user): array

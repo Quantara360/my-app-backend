@@ -21,6 +21,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // user (supervisor, officeStaff, admin), not just admins.
     Route::post('change-password', [AuthController::class, 'changePassword']);
 
+    // Admin-assisted "forgot password" recovery: list accounts, then set a
+    // new password for one directly (no current-password needed - that's
+    // the whole point when it's forgotten). Both check the role inside
+    // the controller itself, not just via the frontend hiding the button.
+    Route::get('users', [AuthController::class, 'listUsers']);
+    Route::put('users/{user}/reset-password', [AuthController::class, 'resetPassword']);
+
     Route::get('worksites', [OfficeController::class, 'worksites']);
     Route::get('worksites/{worksite}', [OfficeController::class, 'worksite']);
     Route::post('worksites', [OfficeController::class, 'createWorksite']);
