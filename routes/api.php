@@ -17,6 +17,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('user', [AuthController::class, 'me']);
     Route::post('logout', [AuthController::class, 'logout']);
     Route::post('profile', [AuthController::class, 'updateProfile']);
+    // No role middleware here on purpose - available to every signed-in
+    // user (supervisor, officeStaff, admin), not just admins.
+    Route::post('change-password', [AuthController::class, 'changePassword']);
 
     Route::get('worksites', [OfficeController::class, 'worksites']);
     Route::get('worksites/{worksite}', [OfficeController::class, 'worksite']);
