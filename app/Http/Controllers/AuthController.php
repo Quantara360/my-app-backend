@@ -139,6 +139,34 @@ class AuthController extends Controller
     }
 
     /**
+     * Self-service password change, available to every authenticated role
+     * (supervisor, officeStaff, admin - this route carries no role
+     * middleware). Unlike updateProfile() above, this verifies the
+     * caller's CURRENT password before allowing a change - updateProfile's
+     * password field never did, so anyone holding a live session token
+     * could silently take over the account permanently with no proof they
+     * actually knew the existing password.
+     */
+    public function changePassword(Request $request)
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password'      => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user = $request->user();
+
+        if (! Hash::check($data['current_password'], $user->password)) {
+            return Response::json(['message' => 'Current password is incorrect.'], 422);
+        }
+
+        $user->password = Hash::make($data['new_password']);
+        $user->save();
+
+        return Response::json(['message' => 'Password changed successfully.']);
+    }
+
+    /**
      * Format a user for API responses — always includes scope fields.
      */
     private function formatUser(\App\Models\User $user): array
