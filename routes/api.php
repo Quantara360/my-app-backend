@@ -114,6 +114,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Face Recognition – worker photo upload (office staff)
     Route::post('workers/{worker}/upload-face', [OfficeController::class, 'uploadWorkerFace']);
+    // Photo as a JSON data URI, not a raw file - see workerPhoto()'s own
+    // comment for why (a real device couldn't load the raw /storage/ file
+    // at all, by fetch() or <img>, while ordinary JSON API calls worked).
+    Route::get('workers/{worker}/photo', [OfficeController::class, 'workerPhoto']);
 
     // Face Recognition – supervisor marks attendance via camera
     Route::post('face-recognition/recognize', [OfficeController::class, 'recognizeFace']);
