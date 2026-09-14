@@ -1141,6 +1141,38 @@ class OfficeController extends Controller
     }
 
     /**
+     * Returns a worker's face photo as a base64 data URI inside a normal
+     * JSON response, instead of the raw image file nginx's /storage/
+     * location serves directly. Added because a real device kept coming
+     * back with the worker ID card's "Download PDF" unable to load the
+     * photo at all (both a fetch() and a plain <img> load of the raw
+     * /storage/ file failed identically there) while every other piece of
+     * data - including this same worker's name/NIC/etc. - loaded fine
+     * from the ordinary JSON API on the very same api.abeysone.cloud
+     * domain. A plausible cause for exactly that split: some mobile
+     * networks/carrier proxies filter or transform raw image-file
+     * downloads (by extension or Content-Type) while leaving JSON API
+     * traffic alone. Wrapping the photo in JSON like every other
+     * successful request sidesteps that regardless of whether that's
+     * the actual cause - the frontend no longer needs its own
+     * fetch/<img>/CORS handling for this at all.
+     */
+    public function workerPhoto(Worker $worker)
+    {
+        if (!$worker->face_photo_path || !Storage::disk('public')->exists($worker->face_photo_path)) {
+            return Response::json(['message' => 'No photo on file for this worker.'], 404);
+        }
+
+        $fullPath = Storage::disk('public')->path($worker->face_photo_path);
+        $mime     = Storage::disk('public')->mimeType($worker->face_photo_path) ?: 'image/jpeg';
+        $base64   = base64_encode(file_get_contents($fullPath));
+
+        return Response::json([
+            'data_uri' => "data:{$mime};base64,{$base64}",
+        ]);
+    }
+
+    /**
      * Supervisor sends a captured image; the face service matches it against
      * registered workers and returns the worker ID + name.
      *
